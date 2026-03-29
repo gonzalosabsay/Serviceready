@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -916,7 +916,8 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
 }
 
 function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void }) {
-  const [conversations, setConversations] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
+  const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
+  const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
 
   useEffect(() => {
     if (!profile) return;
@@ -943,19 +944,13 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { pr
     };
 
     const unsubProf = onSnapshot(qProfessional, async (snap) => {
-      const profBids = await handleSnapshot(snap);
-      setConversations(prev => {
-        const ids = new Set(profBids.map(b => b.id));
-        return [...profBids, ...prev.filter(b => !ids.has(b.id))];
-      });
+      const bids = await handleSnapshot(snap);
+      setProfBids(bids);
     });
 
     const unsubClient = onSnapshot(qClient, async (snap) => {
-      const clientBids = await handleSnapshot(snap);
-      setConversations(prev => {
-        const ids = new Set(clientBids.map(b => b.id));
-        return [...clientBids, ...prev.filter(b => !ids.has(b.id))];
-      });
+      const bids = await handleSnapshot(snap);
+      setClientBids(bids);
     });
 
     return () => {
@@ -964,40 +959,53 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { pr
     };
   }, [profile]);
 
+  const conversations = useMemo(() => {
+    const combined = [...profBids, ...clientBids];
+    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+    return unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [profBids, clientBids]);
+
   if (conversations.length === 0) return <p className="text-zinc-400 text-center py-20">No tienes conversaciones activas.</p>;
 
   return (
     <div className="space-y-4">
-      {conversations.map(conv => (
-        <div 
-          key={conv.id} 
-          onClick={() => onSelectConversation(conv)}
-          className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm flex items-center gap-4 cursor-pointer hover:border-orange-200 transition-all"
-        >
-          <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-100 flex-shrink-0">
-            <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-start">
-              <h4 className="font-bold truncate">{conv.otherUser?.displayName}</h4>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400">{formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}</span>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteChat(conv.id);
-                  }}
-                  className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+      <AnimatePresence mode="popLayout">
+        {conversations.map(conv => (
+          <motion.div 
+            layout
+            key={conv.id} 
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -100 }}
+            transition={{ duration: 0.3 }}
+            onClick={() => onSelectConversation(conv)}
+            className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm flex items-center gap-4 cursor-pointer hover:border-orange-200 transition-all"
+          >
+            <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-100 flex-shrink-0">
+              <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
             </div>
-            <p className="text-sm text-orange-600 font-medium truncate">{conv.job?.title}</p>
-            <p className="text-sm text-zinc-500 truncate">{conv.message}</p>
-          </div>
-        </div>
-      ))}
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start">
+                <h4 className="font-bold truncate">{conv.otherUser?.displayName}</h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-400">{formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteChat(conv.id);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <p className="text-sm text-orange-600 font-medium truncate">{conv.job?.title}</p>
+              <p className="text-sm text-zinc-500 truncate">{conv.message}</p>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
