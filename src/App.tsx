@@ -366,7 +366,16 @@ export default function App() {
     };
 
     try {
-      await addDoc(collection(db, 'bids'), newBid);
+      const bidRef = await addDoc(collection(db, 'bids'), newBid);
+      
+      // Also create the first message in the messages collection
+      await addDoc(collection(db, 'messages'), {
+        bidId: bidRef.id,
+        senderId: profile.uid,
+        text: newBid.message,
+        timestamp: newBid.createdAt
+      });
+
       setView('home');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'bids');
