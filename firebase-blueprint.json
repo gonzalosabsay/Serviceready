@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile for both clients and professionals",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "professional"] },
+        "avgRating": { "type": "number" },
+        "numReviews": { "type": "number" },
+        "specialties": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["uid", "displayName", "role"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "A service request posted by a client",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Open", "Assigned", "Completed"] },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "assignedProfessionalId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "category", "title", "description", "status", "location", "createdAt"]
+    },
+    "Bid": {
+      "title": "Bid",
+      "description": "A proposal sent by a professional for a job",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "jobId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "professionalId": { "type": "string" },
+        "proposedPrice": { "type": "number" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["jobId", "clientId", "professionalId", "proposedPrice", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A chat message between a client and a professional",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bidId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bidId", "senderId", "text", "timestamp"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A review given after a job is completed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reviewerId": { "type": "string" },
+        "reviewedId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "stars": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reviewerId", "reviewedId", "jobId", "stars", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/jobs/{jobId}": { "schema": "Job", "description": "Service requests" },
+    "/bids/{bidId}": { "schema": "Bid", "description": "Job proposals" },
+    "/messages/{messageId}": { "schema": "Message", "description": "Chat messages" },
+    "/reviews/{reviewId}": { "schema": "Review", "description": "User reviews" }
+  }
+}
