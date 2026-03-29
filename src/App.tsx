@@ -177,6 +177,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bidToDelete, setBidToDelete] = useState<string | null>(null);
   const [tempLocation, setTempLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-34.6037, -58.3816]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -403,6 +404,20 @@ export default function App() {
       setShowDeleteConfirm(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `jobs/${selectedJob.id}`);
+    }
+  };
+
+  const deleteChat = async () => {
+    if (!bidToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'bids', bidToDelete));
+      setBidToDelete(null);
+      if (selectedBid?.id === bidToDelete) {
+        setSelectedBid(null);
+        setView('messages');
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `bids/${bidToDelete}`);
     }
   };
 
@@ -749,7 +764,17 @@ export default function App() {
                   setSelectedBid(bid);
                   setView('chat');
                 }} 
+                onDeleteChat={(bidId) => setBidToDelete(bidId)}
               />
+
+              <Modal 
+                isOpen={!!bidToDelete} 
+                onClose={() => setBidToDelete(null)} 
+                title="¿Eliminar conversación?"
+              >
+                <p className="text-zinc-600 mb-6">Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación.</p>
+                <Button variant="danger" onClick={deleteChat} className="w-full">Eliminar Conversación</Button>
+              </Modal>
             </motion.div>
           )}
 
@@ -881,7 +906,7 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
   );
 }
 
-function ConversationsList({ profile, onSelectConversation }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void }) {
+function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void }) {
   const [conversations, setConversations] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
 
   useEffect(() => {
@@ -946,7 +971,18 @@ function ConversationsList({ profile, onSelectConversation }: { profile: UserPro
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start">
               <h4 className="font-bold truncate">{conv.otherUser?.displayName}</h4>
-              <span className="text-xs text-zinc-400">{formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">{formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}</span>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteChat(conv.id);
+                  }}
+                  className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             <p className="text-sm text-orange-600 font-medium truncate">{conv.job?.title}</p>
             <p className="text-sm text-zinc-500 truncate">{conv.message}</p>
