@@ -787,18 +787,21 @@ export default function App() {
           </div>
           <h1 className="text-xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex flex-col items-end mr-2">
-            <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex flex-col items-end mr-1 md:mr-2">
+            <div className="hidden sm:flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
               <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+            </div>
+            <div className="sm:hidden">
+              <span className="text-[9px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-1 block">{profile?.role === 'client' ? 'Cliente' : 'Pro'}</span>
             </div>
             <Button 
               variant="ghost" 
               onClick={toggleRole} 
-              className="text-[9px] uppercase tracking-widest font-bold py-0 h-auto text-stone-500 hover:text-primary p-0"
+              className="text-[8px] sm:text-[9px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
             >
-              Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
+              Cambiar a {profile?.role === 'client' ? (window.innerWidth < 640 ? 'Pro' : 'Profesional') : 'Cliente'}
             </Button>
           </div>
           <div 
@@ -1398,7 +1401,16 @@ export default function App() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-stone-500">Rol actual</span>
-                        <Badge variant="default" className="capitalize">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="default" className="capitalize">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</Badge>
+                          <Button 
+                            variant="ghost" 
+                            onClick={toggleRole} 
+                            className="text-[10px] font-bold text-primary uppercase tracking-widest p-0 h-auto hover:bg-transparent"
+                          >
+                            Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-stone-500">Miembro desde</span>
