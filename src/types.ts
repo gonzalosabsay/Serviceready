@@ -44,8 +44,10 @@ export interface Message {
   id: string;
   bidId: string;
   senderId: string;
+  recipientId: string;
   text: string;
   timestamp: string;
+  read: boolean;
 }
 
 export interface Review {

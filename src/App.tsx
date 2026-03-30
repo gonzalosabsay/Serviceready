@@ -24,7 +24,9 @@ import {
   orderBy, 
   addDoc, 
   getDocFromServer,
-  deleteDoc
+  deleteDoc,
+  getDocs,
+  writeBatch
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { 
@@ -190,6 +192,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Auth & Profile Sync
   useEffect(() => {
@@ -263,18 +266,50 @@ export default function App() {
 
   // Messages Listener
   useEffect(() => {
-    if (!selectedBid) return;
+    if (!selectedBid || view !== 'chat') return;
     
     const q = query(collection(db, 'messages'), where('bidId', '==', selectedBid.id), orderBy('timestamp', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const m = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
       setMessages(m);
+
+      // Mark as read if I am the recipient
+      if (profile) {
+        const unread = snapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.recipientId === profile.uid && data.read === false;
+        });
+        
+        if (unread.length > 0) {
+          try {
+            const batch = writeBatch(db);
+            unread.forEach(doc => {
+              batch.update(doc.ref, { read: true });
+            });
+            await batch.commit();
+          } catch (err) {
+            console.error('Error marking messages as read in listener:', err);
+          }
+        }
+      }
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'messages');
     });
 
     return unsubscribe;
-  }, [selectedBid]);
+  }, [selectedBid, view, profile]);
+
+  // Unread Messages Listener
+  useEffect(() => {
+    if (!profile) return;
+    const q = query(collection(db, 'messages'), where('recipientId', '==', profile.uid), where('read', '==', false));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadCount(snapshot.size);
+    }, (err) => {
+      console.error('Unread messages listener error:', err);
+    });
+    return unsubscribe;
+  }, [profile]);
 
   // Address Autocomplete
   useEffect(() => {
@@ -328,6 +363,32 @@ export default function App() {
       else if (err.code === 'auth/invalid-email') setAuthError("Email inválido.");
       else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') setAuthError("Email o contraseña incorrectos.");
       else setAuthError("Ocurrió un error en la autenticación.");
+    }
+  };
+
+  const openChat = async (bid: Bid) => {
+    setSelectedBid(bid);
+    setView('chat');
+    
+    if (profile) {
+      try {
+        const q = query(
+          collection(db, 'messages'), 
+          where('bidId', '==', bid.id), 
+          where('recipientId', '==', profile.uid), 
+          where('read', '==', false)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const batch = writeBatch(db);
+          snapshot.docs.forEach(doc => {
+            batch.update(doc.ref, { read: true });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        console.error('Error marking messages as read:', err);
+      }
     }
   };
 
@@ -438,8 +499,10 @@ export default function App() {
       await addDoc(collection(db, 'messages'), {
         bidId: bidRef.id,
         senderId: profile.uid,
+        recipientId: selectedJob.clientId,
         text: newBid.message,
-        timestamp: newBid.createdAt
+        timestamp: newBid.createdAt,
+        read: false
       });
 
       setView('home');
@@ -455,11 +518,14 @@ export default function App() {
     const text = input.value;
     if (!text.trim()) return;
 
+    const recipientId = selectedBid.professionalId === profile.uid ? selectedBid.clientId : selectedBid.professionalId;
     const newMessage = {
       bidId: selectedBid.id,
       senderId: profile.uid,
+      recipientId,
       text,
       timestamp: new Date().toISOString(),
+      read: false
     };
 
     try {
@@ -866,10 +932,7 @@ export default function App() {
                   {profile?.role === 'client' && selectedJob.clientId === profile.uid && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold">Postulaciones</h3>
-                      <BidsList jobId={selectedJob.id} onSelectBid={(bid) => {
-                        setSelectedBid(bid);
-                        setView('chat');
-                      }} />
+                      <BidsList jobId={selectedJob.id} onSelectBid={openChat} />
                     </div>
                   )}
                 </div>
@@ -906,10 +969,7 @@ export default function App() {
               <h2 className="text-2xl font-bold mb-8">Conversaciones</h2>
               <ConversationsList 
                 profile={profile} 
-                onSelectConversation={(bid) => {
-                  setSelectedBid(bid);
-                  setView('chat');
-                }} 
+                onSelectConversation={openChat} 
                 onDeleteChat={(bidId) => setBidToDelete(bidId)}
               />
 
@@ -934,7 +994,7 @@ export default function App() {
             >
               <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <Button variant="ghost" onClick={() => setView('job-details')} className="p-2">
+                  <Button variant="ghost" onClick={() => setView('messages')} className="p-2">
                     <ChevronLeft className="w-6 h-6" />
                   </Button>
                   <div>
@@ -965,7 +1025,7 @@ export default function App() {
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-6 py-3 flex items-center justify-around z-[1001]">
         <NavButton active={view === 'home'} onClick={() => setView('home')} icon={<Briefcase />} label="Trabajos" />
-        <NavButton active={view === 'messages'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" />
+        <NavButton active={view === 'messages'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" badge={unreadCount} />
         <NavButton active={view === 'profile'} onClick={() => setView('profile')} icon={<UserIcon />} label="Perfil" />
       </nav>
 
@@ -1002,10 +1062,15 @@ export default function App() {
   );
 }
 
-function NavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function NavButton({ active, onClick, icon, label, badge }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }) {
   return (
-    <button onClick={onClick} className={cn('flex flex-col items-center gap-1', active ? 'text-orange-600' : 'text-zinc-400')}>
+    <button onClick={onClick} className={cn('flex flex-col items-center gap-1 relative', active ? 'text-orange-600' : 'text-zinc-400')}>
       {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6' })}
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
       <span className="text-[10px] font-bold uppercase">{label}</span>
     </button>
   );
