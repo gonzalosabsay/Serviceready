@@ -233,6 +233,11 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const filteredJobs = useMemo(() => {
     if (selectedCategory === 'Todas') return jobs;
@@ -314,7 +319,7 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [profile, myBids]);
+  }, [profile, myBids.length]); // Only re-run if number of bids changes
 
   // My Bids Listener (for professionals)
   useEffect(() => {
@@ -580,10 +585,12 @@ export default function App() {
     };
 
     try {
-      const bidRef = await addDoc(collection(db, 'bids'), newBid);
+      const batch = writeBatch(db);
+      const bidRef = doc(collection(db, 'bids'));
+      const msgRef = doc(collection(db, 'messages'));
       
-      // Also create the first message in the messages collection
-      await addDoc(collection(db, 'messages'), {
+      batch.set(bidRef, newBid);
+      batch.set(msgRef, {
         bidId: bidRef.id,
         senderId: profile.uid,
         recipientId: selectedJob.clientId,
@@ -591,6 +598,8 @@ export default function App() {
         timestamp: newBid.createdAt,
         read: false
       });
+
+      await batch.commit();
 
       // Set the selected bid so the chat view can open it
       setSelectedBid({ id: bidRef.id, ...newBid } as Bid);
@@ -608,22 +617,27 @@ export default function App() {
     if (!text.trim()) return;
 
     const recipientId = selectedBid.professionalId === profile.uid ? selectedBid.clientId : selectedBid.professionalId;
+    const timestamp = new Date().toISOString();
     const newMessage = {
       bidId: selectedBid.id,
       senderId: profile.uid,
       recipientId,
       text,
-      timestamp: new Date().toISOString(),
+      timestamp,
       read: false
     };
 
     try {
-      await addDoc(collection(db, 'messages'), newMessage);
-      // Update bid with last message
-      await updateDoc(doc(db, 'bids', selectedBid.id), {
+      const batch = writeBatch(db);
+      const msgRef = doc(collection(db, 'messages'));
+      
+      batch.set(msgRef, newMessage);
+      batch.update(doc(db, 'bids', selectedBid.id), {
         lastMessage: text,
-        lastMessageAt: newMessage.timestamp
+        lastMessageAt: timestamp
       });
+
+      await batch.commit();
       input.value = '';
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'messages');
@@ -633,7 +647,21 @@ export default function App() {
   const deleteJob = async () => {
     if (!selectedJob) return;
     try {
-      await deleteDoc(doc(db, 'jobs', selectedJob.id));
+      // Delete associated bids and messages first
+      const bidsQuery = query(collection(db, 'bids'), where('jobId', '==', selectedJob.id));
+      const bidsSnap = await getDocs(bidsQuery);
+      
+      const batch = writeBatch(db);
+      for (const bidDoc of bidsSnap.docs) {
+        const msgsQuery = query(collection(db, 'messages'), where('bidId', '==', bidDoc.id));
+        const msgsSnap = await getDocs(msgsQuery);
+        msgsSnap.docs.forEach(m => batch.delete(m.ref));
+        batch.delete(bidDoc.ref);
+      }
+      
+      batch.delete(doc(db, 'jobs', selectedJob.id));
+      await batch.commit();
+
       setView('home');
       setSelectedJob(null);
       setShowDeleteConfirm(false);
@@ -645,7 +673,16 @@ export default function App() {
   const deleteChat = async () => {
     if (!bidToDelete) return;
     try {
-      await deleteDoc(doc(db, 'bids', bidToDelete));
+      // Delete associated messages first to clear notifications
+      const msgsQuery = query(collection(db, 'messages'), where('bidId', '==', bidToDelete));
+      const msgsSnap = await getDocs(msgsQuery);
+      
+      const batch = writeBatch(db);
+      msgsSnap.docs.forEach(m => batch.delete(m.ref));
+      batch.delete(doc(db, 'bids', bidToDelete));
+      
+      await batch.commit();
+
       setBidToDelete(null);
       if (selectedBid?.id === bidToDelete) {
         setSelectedBid(null);
@@ -993,15 +1030,61 @@ export default function App() {
 
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio</label>
-                      <div className="rounded-2xl overflow-hidden border border-border shadow-inner">
-                        <LocationPicker 
-                          onLocationSelect={(loc) => setLocation(loc)} 
-                          initialLocation={location}
+                      <div className="relative">
+                        <Input 
+                          name="address" 
+                          placeholder="Ingresa la dirección o selecciona en el mapa" 
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setShowSuggestions(true);
+                          }}
+                          required
                         />
+                        <AnimatePresence>
+                          {showSuggestions && suggestions.length > 0 && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              className="absolute z-[1002] w-full mt-1 bg-white border border-border rounded-xl shadow-xl overflow-hidden"
+                            >
+                              {suggestions.map((s, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => handleSelectSuggestion(s)}
+                                  className="w-full text-left px-4 py-3 text-sm hover:bg-stone-50 border-b border-stone-50 last:border-0"
+                                >
+                                  {s.display_name}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      {location && (
+                      
+                      <div className="h-[200px] rounded-2xl overflow-hidden border border-border shadow-inner mt-4 relative z-0">
+                        <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
+                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                          <LocationPicker onLocationSelect={(lat, lng) => setTempLocation({ lat, lng })} />
+                          <MapController center={mapCenter} />
+                          {tempLocation && (
+                            <Marker position={[tempLocation.lat, tempLocation.lng]} />
+                          )}
+                        </MapContainer>
+                        <Button 
+                          type="button"
+                          variant="secondary" 
+                          onClick={handleGetCurrentLocation}
+                          className="absolute bottom-4 right-4 z-[400] p-2 rounded-full shadow-lg"
+                        >
+                          <Navigation className="w-5 h-5" />
+                        </Button>
+                      </div>
+                      {tempLocation && (
                         <p className="text-[10px] font-bold text-primary mt-2 flex items-center gap-1">
-                          <MapPin className="w-3 h-3" /> {location.address}
+                          <MapPin className="w-3 h-3" /> Ubicación seleccionada en el mapa
                         </p>
                       )}
                     </div>
@@ -1295,7 +1378,7 @@ export default function App() {
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-stone-500">Rol actual</span>
-                        <Badge variant="secondary" className="capitalize">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</Badge>
+                        <Badge variant="default" className="capitalize">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</Badge>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-stone-500">Miembro desde</span>
@@ -1343,6 +1426,7 @@ function NavButton({ active, onClick, icon, label, badge }: { active: boolean, o
 function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bid) => void }) {
   const [bids, setBids] = useState<(Bid & { professional?: UserProfile })[]>([]);
   const lastUpdateRef = useRef(0);
+  const cacheRef = useRef<{ users: Record<string, UserProfile> }>({ users: {} });
 
   useEffect(() => {
     const q = query(collection(db, 'bids'), where('jobId', '==', jobId), orderBy('createdAt', 'desc'));
@@ -1352,9 +1436,14 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
       
       try {
         const fullBids = await Promise.all(bData.map(async (bid) => {
+          if (cacheRef.current.users[bid.professionalId]) {
+            return { ...bid, professional: cacheRef.current.users[bid.professionalId] };
+          }
           try {
             const profSnap = await getDoc(doc(db, 'users', bid.professionalId));
-            return { ...bid, professional: { uid: profSnap.id, ...profSnap.data() } as UserProfile };
+            const prof = { uid: profSnap.id, ...profSnap.data() } as UserProfile;
+            cacheRef.current.users[bid.professionalId] = prof;
+            return { ...bid, professional: prof };
           } catch (err) {
             console.error("Error fetching professional profile:", err);
             return { ...bid };
@@ -1411,6 +1500,7 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
   const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const lastUpdateProfRef = useRef(0);
   const lastUpdateClientRef = useRef(0);
+  const cacheRef = useRef<{ users: Record<string, UserProfile>, jobs: Record<string, Job> }>({ users: {}, jobs: {} });
 
   useEffect(() => {
     if (!profile) return;
@@ -1422,15 +1512,31 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
       try {
         const enriched = await Promise.all(bData.map(async (bid: Bid) => {
           const otherUserId = bid.professionalId === profile.uid ? bid.clientId : bid.professionalId;
+          
           try {
-            const [otherUserSnap, jobSnap] = await Promise.all([
-              getDoc(doc(db, 'users', otherUserId)),
-              getDoc(doc(db, 'jobs', bid.jobId))
-            ]);
+            let otherUser = cacheRef.current.users[otherUserId];
+            let job = cacheRef.current.jobs[bid.jobId];
+
+            if (!otherUser || !job) {
+              const [otherUserSnap, jobSnap] = await Promise.all([
+                !otherUser ? getDoc(doc(db, 'users', otherUserId)) : Promise.resolve(null),
+                !job ? getDoc(doc(db, 'jobs', bid.jobId)) : Promise.resolve(null)
+              ]);
+
+              if (otherUserSnap && otherUserSnap.exists()) {
+                otherUser = { uid: otherUserSnap.id, ...otherUserSnap.data() } as UserProfile;
+                cacheRef.current.users[otherUserId] = otherUser;
+              }
+              if (jobSnap && jobSnap.exists()) {
+                job = { id: jobSnap.id, ...jobSnap.data() } as Job;
+                cacheRef.current.jobs[bid.jobId] = job;
+              }
+            }
+
             return { 
               ...bid, 
-              otherUser: { uid: otherUserSnap.id, ...otherUserSnap.data() } as UserProfile,
-              job: { id: jobSnap.id, ...jobSnap.data() } as Job
+              otherUser,
+              job
             };
           } catch (err) {
             console.error("Error enriching bid data:", bid.id, err);
