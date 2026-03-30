@@ -26,7 +26,8 @@ import {
   getDocFromServer,
   deleteDoc,
   getDocs,
-  writeBatch
+  writeBatch,
+  updateDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { 
@@ -195,6 +196,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
 
   // Auth & Profile Sync
   useEffect(() => {
@@ -332,6 +334,8 @@ export default function App() {
     const q = query(collection(db, 'messages'), where('recipientId', '==', profile.uid), where('read', '==', false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUnreadCount(snapshot.size);
+      const ids = new Set(snapshot.docs.map(doc => doc.data().bidId as string));
+      setUnreadBidIds(ids);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'messages');
     });
@@ -530,6 +534,8 @@ export default function App() {
       proposedPrice: Number(formData.get('price')),
       message: formData.get('message') as string,
       createdAt: new Date().toISOString(),
+      lastMessage: formData.get('message') as string,
+      lastMessageAt: new Date().toISOString(),
     };
 
     try {
@@ -572,6 +578,11 @@ export default function App() {
 
     try {
       await addDoc(collection(db, 'messages'), newMessage);
+      // Update bid with last message
+      await updateDoc(doc(db, 'bids', selectedBid.id), {
+        lastMessage: text,
+        lastMessageAt: newMessage.timestamp
+      });
       input.value = '';
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'messages');
@@ -988,14 +999,14 @@ export default function App() {
                 <div className="space-y-6">
                   {profile?.role === 'professional' && (
                     <>
-                      {myBids.some(b => b.jobId === selectedJob.id) ? (
+                      {myBids.some(b => b.jobId === selectedJob.id) || (selectedBid && selectedBid.jobId === selectedJob.id) ? (
                         <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200 text-center">
                           <CheckCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
                           <h3 className="font-bold text-lg mb-2 text-orange-900">Ya te postulaste</h3>
                           <p className="text-orange-700 text-sm mb-6">Ya has enviado un presupuesto para este trabajo. Puedes seguir la conversación desde mensajes.</p>
                           <Button 
                             onClick={() => {
-                              const bid = myBids.find(b => b.jobId === selectedJob.id);
+                              const bid = myBids.find(b => b.jobId === selectedJob.id) || selectedBid;
                               if (bid) openChat(bid);
                             }} 
                             className="w-full"
@@ -1038,6 +1049,7 @@ export default function App() {
                 profile={profile} 
                 onSelectConversation={openChat} 
                 onDeleteChat={(bidId) => setBidToDelete(bidId)}
+                unreadBidIds={unreadBidIds}
               />
 
               <Modal 
@@ -1185,7 +1197,7 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
             </div>
             <div>
               <h4 className="font-bold">{bid.professional?.displayName}</h4>
-              <p className="text-sm text-zinc-500">{bid.message}</p>
+              <p className="text-sm text-zinc-500">{bid.lastMessage || bid.message}</p>
             </div>
           </div>
           <div className="text-right">
@@ -1198,7 +1210,7 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
   );
 }
 
-function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void }) {
+function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string> }) {
   const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
 
@@ -1245,7 +1257,7 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { pr
   const conversations = useMemo(() => {
     const combined = [...profBids, ...clientBids];
     const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-    return unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return unique.sort((a, b) => new Date(b.lastMessageAt || b.createdAt).getTime() - new Date(a.lastMessageAt || a.createdAt).getTime());
   }, [profBids, clientBids]);
 
   if (conversations.length === 0) return <p className="text-zinc-400 text-center py-20">No tienes conversaciones activas.</p>;
@@ -1262,16 +1274,28 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { pr
             exit={{ opacity: 0, x: -100 }}
             transition={{ duration: 0.3 }}
             onClick={() => onSelectConversation(conv)}
-            className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm flex items-center gap-4 cursor-pointer hover:border-orange-200 transition-all"
+            className={cn(
+              "bg-white p-6 rounded-3xl border flex items-center gap-4 cursor-pointer transition-all",
+              unreadBidIds.has(conv.id) ? "border-orange-500 shadow-md bg-orange-50/30" : "border-zinc-200 shadow-sm hover:border-orange-200"
+            )}
           >
-            <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-100 flex-shrink-0">
-              <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+            <div className="relative">
+              <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-100 flex-shrink-0">
+                <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+              </div>
+              {unreadBidIds.has(conv.id) && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-white" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start">
-                <h4 className="font-bold truncate">{conv.otherUser?.displayName}</h4>
+                <h4 className={cn("truncate", unreadBidIds.has(conv.id) ? "font-black text-zinc-900" : "font-bold text-zinc-800")}>
+                  {conv.otherUser?.displayName}
+                </h4>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400">{formatDistanceToNow(new Date(conv.createdAt), { addSuffix: true })}</span>
+                  <span className={cn("text-xs", unreadBidIds.has(conv.id) ? "text-orange-600 font-bold" : "text-zinc-400")}>
+                    {formatDistanceToNow(new Date(conv.lastMessageAt || conv.createdAt), { addSuffix: true })}
+                  </span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1283,8 +1307,12 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat }: { pr
                   </button>
                 </div>
               </div>
-              <p className="text-sm text-orange-600 font-medium truncate">{conv.job?.title}</p>
-              <p className="text-sm text-zinc-500 truncate">{conv.message}</p>
+              <p className={cn("text-sm font-medium truncate", unreadBidIds.has(conv.id) ? "text-orange-700" : "text-orange-600")}>
+                {conv.job?.title}
+              </p>
+              <p className={cn("text-sm truncate", unreadBidIds.has(conv.id) ? "text-zinc-900 font-bold" : "text-zinc-500")}>
+                {conv.lastMessage || conv.message}
+              </p>
             </div>
           </motion.div>
         ))}

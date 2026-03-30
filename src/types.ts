@@ -39,6 +39,8 @@ export interface Bid {
   message: string;
   createdAt: string;
   job?: Job;
+  lastMessage?: string;
+  lastMessageAt?: string;
 }
 
 export interface Message {
