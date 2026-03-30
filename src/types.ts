@@ -38,6 +38,7 @@ export interface Bid {
   proposedPrice: number;
   message: string;
   createdAt: string;
+  job?: Job;
 }
 
 export interface Message {

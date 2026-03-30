@@ -56,7 +56,8 @@ import {
   Map as MapIcon,
   List as ListIcon,
   Trash2,
-  Navigation
+  Navigation,
+  CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -177,6 +178,7 @@ export default function App() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedBid, setSelectedBid] = useState<Bid | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [myBids, setMyBids] = useState<Bid[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
@@ -256,9 +258,34 @@ export default function App() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const j = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
-      setJobs(j);
+      
+      // Filter out jobs that the professional has already bid on
+      if (profile.role === 'professional') {
+        const bidJobIds = new Set(myBids.map(b => b.jobId));
+        setJobs(j.filter(job => !bidJobIds.has(job.id)));
+      } else {
+        setJobs(j);
+      }
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'jobs');
+    });
+
+    return unsubscribe;
+  }, [profile, myBids]);
+
+  // My Bids Listener (for professionals)
+  useEffect(() => {
+    if (!profile || profile.role !== 'professional') {
+      setMyBids([]);
+      return;
+    }
+    
+    const q = query(collection(db, 'bids'), where('professionalId', '==', profile.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const b = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
+      setMyBids(b);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
     });
 
     return unsubscribe;
@@ -367,7 +394,20 @@ export default function App() {
   };
 
   const openChat = async (bid: Bid) => {
-    setSelectedBid(bid);
+    // If job details are missing, fetch them
+    let enrichedBid = { ...bid };
+    if (!enrichedBid.job && enrichedBid.jobId) {
+      try {
+        const jobSnap = await getDoc(doc(db, 'jobs', enrichedBid.jobId));
+        if (jobSnap.exists()) {
+          enrichedBid.job = { id: jobSnap.id, ...jobSnap.data() } as Job;
+        }
+      } catch (err) {
+        console.error('Error fetching job for chat:', err);
+      }
+    }
+
+    setSelectedBid(enrichedBid);
     setView('chat');
     
     if (profile) {
@@ -505,7 +545,9 @@ export default function App() {
         read: false
       });
 
-      setView('home');
+      // Set the selected bid so the chat view can open it
+      setSelectedBid({ id: bidRef.id, ...newBid } as Bid);
+      setView('messages');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'bids');
     }
@@ -890,7 +932,13 @@ export default function App() {
               className="p-6 max-w-4xl mx-auto w-full"
             >
               <div className="flex items-center gap-4 mb-8">
-                <Button variant="ghost" onClick={() => setView('home')} className="p-2">
+                <Button variant="ghost" onClick={() => {
+                  if (selectedBid && view === 'job-details') {
+                    setView('chat');
+                  } else {
+                    setView('home');
+                  }
+                }} className="p-2">
                   <ChevronLeft className="w-6 h-6" />
                 </Button>
                 <h2 className="text-2xl font-bold">Detalles</h2>
@@ -939,14 +987,33 @@ export default function App() {
 
                 <div className="space-y-6">
                   {profile?.role === 'professional' && (
-                    <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl">
-                      <h3 className="font-bold text-lg mb-4">Enviar Presupuesto (Postulación)</h3>
-                      <form onSubmit={submitBid} className="space-y-4">
-                        <Input name="price" type="number" placeholder="Precio Estimado ($)" required />
-                        <TextArea name="message" placeholder="Mensaje de postulación..." rows={3} required />
-                        <Button type="submit" className="w-full">Enviar Postulación</Button>
-                      </form>
-                    </div>
+                    <>
+                      {myBids.some(b => b.jobId === selectedJob.id) ? (
+                        <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200 text-center">
+                          <CheckCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+                          <h3 className="font-bold text-lg mb-2 text-orange-900">Ya te postulaste</h3>
+                          <p className="text-orange-700 text-sm mb-6">Ya has enviado un presupuesto para este trabajo. Puedes seguir la conversación desde mensajes.</p>
+                          <Button 
+                            onClick={() => {
+                              const bid = myBids.find(b => b.jobId === selectedJob.id);
+                              if (bid) openChat(bid);
+                            }} 
+                            className="w-full"
+                          >
+                            Ir al Chat
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl">
+                          <h3 className="font-bold text-lg mb-4">Enviar Presupuesto (Postulación)</h3>
+                          <form onSubmit={submitBid} className="space-y-4">
+                            <Input name="price" type="number" placeholder="Precio Estimado ($)" required />
+                            <TextArea name="message" placeholder="Mensaje de postulación..." rows={3} required />
+                            <Button type="submit" className="w-full">Enviar Postulación</Button>
+                          </form>
+                        </div>
+                      )}
+                    </>
                   )}
                   {profile?.role === 'client' && selectedJob.clientId !== profile.uid && (
                     <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200">
@@ -1002,6 +1069,18 @@ export default function App() {
                     <p className="text-xs text-zinc-500">${selectedBid.proposedPrice}</p>
                   </div>
                 </div>
+                {selectedBid.job && (
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      setSelectedJob(selectedBid.job || null);
+                      setView('job-details');
+                    }}
+                    className="text-orange-600 text-xs font-bold"
+                  >
+                    Ver Trabajo
+                  </Button>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
