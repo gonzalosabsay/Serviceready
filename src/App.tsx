@@ -794,14 +794,14 @@ export default function App() {
               <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <div className="sm:hidden">
-              <span className="text-[9px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-1 block">{profile?.role === 'client' ? 'Cliente' : 'Pro'}</span>
+              <span className="text-[9px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-1 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <Button 
               variant="ghost" 
               onClick={toggleRole} 
               className="text-[8px] sm:text-[9px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
             >
-              Cambiar a {profile?.role === 'client' ? (window.innerWidth < 640 ? 'Pro' : 'Profesional') : 'Cliente'}
+              Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
             </Button>
           </div>
           <div 
