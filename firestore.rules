@@ -70,7 +70,10 @@ service cloud.firestore {
 
     function isValidBid(data) {
       return hasRequiredFields(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
-             data.jobId is string && data.clientId is string && data.professionalId is string && data.proposedPrice is number && data.proposedPrice > 0;
+             data.jobId is string && data.clientId is string && data.professionalId is string && data.proposedPrice is number && data.proposedPrice > 0 &&
+             (!('message' in data) || data.message is string) &&
+             (!('lastMessage' in data) || data.lastMessage is string) &&
+             (!('lastMessageAt' in data) || data.lastMessageAt is string);
     }
 
     function isValidMessage(data) {
@@ -122,8 +125,13 @@ service cloud.firestore {
         let job = get(/databases/$(database)/documents/jobs/$(bid.jobId)).data;
         return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid;
       }
+      function isBidParticipantWrite(bidId) {
+        let bid = getAfter(/databases/$(database)/documents/bids/$(bidId)).data;
+        let job = get(/databases/$(database)/documents/jobs/$(bid.jobId)).data;
+        return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid;
+      }
       allow read: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId));
-      allow create: if isAuthenticated() && isValidMessage(request.resource.data) && request.resource.data.senderId == request.auth.uid && isBidParticipant(request.resource.data.bidId);
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data) && request.resource.data.senderId == request.auth.uid && isBidParticipantWrite(request.resource.data.bidId);
       allow update: if isAuthenticated() && (
         (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read == true) ||
         isAdmin()

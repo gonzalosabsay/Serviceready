@@ -606,6 +606,7 @@ export default function App() {
       setView('messages');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'bids');
+      setError('Error al enviar la postulación. Por favor, intenta de nuevo.');
     }
   };
 
@@ -641,6 +642,7 @@ export default function App() {
       input.value = '';
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'messages');
+      setError('Error al enviar el mensaje.');
     }
   };
 
