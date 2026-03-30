@@ -62,6 +62,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -951,7 +952,7 @@ export default function App() {
                           </div>
                           <div className="text-right">
                             <span className="text-stone-400 text-[10px] font-bold uppercase tracking-wider block mb-1">
-                              {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
+                              {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true, locale: es })}
                             </span>
                             <div className="flex items-center justify-end gap-1 text-primary">
                               <span className="text-xs font-bold uppercase tracking-widest">Ver</span>
@@ -1162,7 +1163,7 @@ export default function App() {
                     </div>
                     <p className="text-zinc-700 leading-relaxed mb-8">{selectedJob.description}</p>
                     <div className="flex items-center gap-2 text-zinc-400 text-sm">
-                      <Clock className="w-4 h-4" /> {formatDistanceToNow(new Date(selectedJob.createdAt), { addSuffix: true })}
+                      <Clock className="w-4 h-4" /> {formatDistanceToNow(new Date(selectedJob.createdAt), { addSuffix: true, locale: es })}
                     </div>
                   </div>
 
@@ -1304,7 +1305,7 @@ export default function App() {
                       {msg.text}
                     </div>
                     <span className="text-[9px] font-bold text-stone-400 mt-1 px-1 uppercase">
-                      {msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true }) : 'Ahora'}
+                      {msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true, locale: es }) : 'Ahora'}
                     </span>
                   </div>
                 ))}
@@ -1633,7 +1634,7 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
                 </h4>
                 <div className="flex items-center gap-2">
                   <span className={cn("text-[10px] font-bold uppercase tracking-wider", unreadBidIds.has(conv.id) ? "text-primary" : "text-stone-400")}>
-                    {formatDistanceToNow(new Date(conv.lastMessageAt || conv.createdAt), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(conv.lastMessageAt || conv.createdAt), { addSuffix: true, locale: es })}
                   </span>
                   <button 
                     onClick={(e) => {
