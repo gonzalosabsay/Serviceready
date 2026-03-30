@@ -15,7 +15,7 @@ service cloud.firestore {
     // Fields: id, jobId, professionalId, proposedPrice, message, createdAt
     //
     // Collection: messages
-    // Fields: id, bidId, senderId, text, timestamp
+    // Fields: id, bidId, senderId, recipientId, text, timestamp, read
     //
     // Collection: reviews
     // Fields: id, reviewerId, reviewedId, jobId, stars, comment, createdAt
@@ -74,8 +74,10 @@ service cloud.firestore {
     }
 
     function isValidMessage(data) {
-      return hasRequiredFields(['bidId', 'senderId', 'text', 'timestamp']) &&
-             data.bidId is string && data.senderId is string && data.text is string && data.text.size() > 0 && data.text.size() < 1000;
+      return hasRequiredFields(['bidId', 'senderId', 'recipientId', 'text', 'timestamp', 'read']) &&
+             data.bidId is string && data.senderId is string && data.recipientId is string &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 1000 &&
+             data.read is bool;
     }
 
     function isValidReview(data) {
@@ -120,8 +122,12 @@ service cloud.firestore {
         let job = get(/databases/$(database)/documents/jobs/$(bid.jobId)).data;
         return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid;
       }
-      allow read: if isAuthenticated() && isBidParticipant(resource.data.bidId);
+      allow read: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId));
       allow create: if isAuthenticated() && isValidMessage(request.resource.data) && request.resource.data.senderId == request.auth.uid && isBidParticipant(request.resource.data.bidId);
+      allow update: if isAuthenticated() && (
+        (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read == true) ||
+        isAdmin()
+      );
     }
 
     match /reviews/{reviewId} {

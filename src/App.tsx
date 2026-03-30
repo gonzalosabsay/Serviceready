@@ -306,7 +306,7 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUnreadCount(snapshot.size);
     }, (err) => {
-      console.error('Unread messages listener error:', err);
+      handleFirestoreError(err, OperationType.LIST, 'messages');
     });
     return unsubscribe;
   }, [profile]);
@@ -1065,12 +1065,14 @@ export default function App() {
 function NavButton({ active, onClick, icon, label, badge }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }) {
   return (
     <button onClick={onClick} className={cn('flex flex-col items-center gap-1 relative', active ? 'text-orange-600' : 'text-zinc-400')}>
-      {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6' })}
-      {badge !== undefined && badge > 0 && (
-        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      )}
+      <div className="relative">
+        {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6' })}
+        {badge !== undefined && badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+            {badge > 9 ? '9+' : badge}
+          </span>
+        )}
+      </div>
       <span className="text-[10px] font-bold uppercase">{label}</span>
     </button>
   );

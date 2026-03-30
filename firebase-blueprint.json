@@ -64,10 +64,12 @@
         "id": { "type": "string" },
         "bidId": { "type": "string" },
         "senderId": { "type": "string" },
+        "recipientId": { "type": "string" },
         "text": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" }
       },
-      "required": ["bidId", "senderId", "text", "timestamp"]
+      "required": ["bidId", "senderId", "recipientId", "text", "timestamp", "read"]
     },
     "Review": {
       "title": "Review",
