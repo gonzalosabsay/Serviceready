@@ -188,6 +188,8 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Auth & Profile Sync
   useEffect(() => {
@@ -274,6 +276,32 @@ export default function App() {
     return unsubscribe;
   }, [selectedBid]);
 
+  // Address Autocomplete
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.length < 3) {
+        setSuggestions([]);
+        return;
+      }
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`);
+        const data = await response.json();
+        setSuggestions(data);
+      } catch (err) {
+        console.error('Autocomplete error:', err);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchSuggestions, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = () => setShowSuggestions(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const handleLogin = async () => {
     setAuthError(null);
     try {
@@ -331,12 +359,23 @@ export default function App() {
         const newLng = parseFloat(lon);
         setTempLocation({ lat: newLat, lng: newLng });
         setMapCenter([newLat, newLng]);
+        setShowSuggestions(false);
       }
     } catch (err) {
       console.error('Geocoding error:', err);
     } finally {
       setIsGeocoding(false);
     }
+  };
+
+  const handleSelectSuggestion = (suggestion: any) => {
+    const { lat, lon, display_name } = suggestion;
+    const newLat = parseFloat(lat);
+    const newLng = parseFloat(lon);
+    setTempLocation({ lat: newLat, lng: newLng });
+    setMapCenter([newLat, newLng]);
+    setSearchQuery(display_name);
+    setShowSuggestions(false);
   };
 
   const handleGetCurrentLocation = () => {
@@ -548,7 +587,10 @@ export default function App() {
           >
             Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
           </Button>
-          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-zinc-100">
+          <div 
+            className="w-10 h-10 rounded-full overflow-hidden border-2 border-zinc-100 cursor-pointer hover:border-orange-500 transition-colors"
+            onClick={() => setView('profile')}
+          >
             <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
           </div>
         </div>
@@ -713,11 +755,36 @@ export default function App() {
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                           <Input 
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => {
+                              setSearchQuery(e.target.value);
+                              setShowSuggestions(true);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
                             placeholder="Buscar dirección..." 
                             className="pl-10"
                             onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleGeocode())}
+                            onFocus={(e) => {
+                              e.stopPropagation();
+                              setShowSuggestions(true);
+                            }}
                           />
+                          {showSuggestions && suggestions.length > 0 && (
+                            <div 
+                              className="absolute top-full left-0 right-0 bg-white border border-zinc-200 rounded-xl mt-1 shadow-xl z-[1010] overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {suggestions.map((s, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => handleSelectSuggestion(s)}
+                                  className="w-full text-left px-4 py-3 text-sm hover:bg-zinc-50 border-b border-zinc-100 last:border-0 transition-colors"
+                                >
+                                  {s.display_name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Button type="button" variant="outline" onClick={handleGeocode} disabled={isGeocoding}>
                           {isGeocoding ? 'Buscando...' : 'Buscar'}
