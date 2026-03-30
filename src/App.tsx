@@ -9,6 +9,8 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { 
@@ -182,6 +184,10 @@ export default function App() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([-34.6037, -58.3816]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Auth & Profile Sync
   useEffect(() => {
@@ -269,10 +275,31 @@ export default function App() {
   }, [selectedBid]);
 
   const handleLogin = async () => {
+    setAuthError(null);
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (err) {
       console.error(err);
+      setAuthError("Error al iniciar sesión con Google.");
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/email-already-in-use') setAuthError("El email ya está en uso.");
+      else if (err.code === 'auth/weak-password') setAuthError("La contraseña es muy débil.");
+      else if (err.code === 'auth/invalid-email') setAuthError("Email inválido.");
+      else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') setAuthError("Email o contraseña incorrectos.");
+      else setAuthError("Ocurrió un error en la autenticación.");
     }
   };
 
@@ -441,17 +468,60 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white p-6">
-        <div className="max-w-md w-full text-center">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white p-6 overflow-y-auto">
+        <div className="max-w-md w-full text-center py-8">
           <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-8">
             <Briefcase className="w-10 h-10 text-orange-600" />
           </div>
-          <h1 className="text-4xl font-bold text-zinc-900 mb-4 tracking-tight">ServiceReady</h1>
-          <p className="text-zinc-500 mb-12 text-lg">Conecta con los mejores profesionales de oficios en tu zona.</p>
-          <Button onClick={handleLogin} className="w-full py-4 text-lg flex items-center justify-center gap-3">
+          <h1 className="text-4xl font-bold text-zinc-900 mb-2 tracking-tight">ServiceReady</h1>
+          <p className="text-zinc-500 mb-8 text-lg">Conecta con los mejores profesionales de oficios en tu zona.</p>
+          
+          <form onSubmit={handleEmailAuth} className="space-y-4 mb-6 text-left">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Email</label>
+              <Input 
+                type="email" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                placeholder="tu@email.com" 
+                required 
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Contraseña</label>
+              <Input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="••••••••" 
+                required 
+              />
+            </div>
+            {authError && <p className="text-red-500 text-xs mt-1">{authError}</p>}
+            <Button type="submit" className="w-full py-3">
+              {isSignUp ? 'Crear Cuenta' : 'Iniciar Sesión'}
+            </Button>
+          </form>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-200"></div></div>
+            <div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-zinc-500 uppercase">O continuar con</span></div>
+          </div>
+
+          <Button variant="outline" onClick={handleLogin} className="w-full py-3 flex items-center justify-center gap-3 mb-6">
             <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-            Continuar con Google
+            Google
           </Button>
+
+          <p className="text-zinc-500 text-sm">
+            {isSignUp ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'} 
+            <button 
+              onClick={() => { setIsSignUp(!isSignUp); setAuthError(null); }} 
+              className="ml-1 text-orange-600 font-bold hover:underline"
+            >
+              {isSignUp ? 'Inicia Sesión' : 'Regístrate'}
+            </button>
+          </p>
         </div>
       </div>
     );
