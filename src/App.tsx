@@ -116,6 +116,17 @@ const MapController = ({ center }: { center: [number, number] }) => {
   return null;
 };
 
+const CATEGORIES = [
+  { group: "Mantenimiento Técnico", name: "Plomería y Fontanería" },
+  { group: "Energía y Clima", name: "Electricidad Residencial" },
+  { group: "Remodelación y Estética", name: "Pintura e Impermeabilización" },
+  { group: "Construcción Estructural", name: "Albañilería y Obra Civil" },
+  { group: "Seguridad y Cerramientos", name: "Cerrajería de Emergencia" },
+  { group: "Carpintería y Acabados", name: "Carpintería de Madera" },
+  { group: "Espacios Exteriores", name: "Jardinería y Paisajismo" },
+  { group: "Limpieza y Desinfección", name: "Limpieza Especializada" },
+];
+
 const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }) => {
   const variants = {
     primary: 'bg-orange-600 text-white hover:bg-orange-700',
@@ -197,6 +208,7 @@ export default function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
+  const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
 
   // Auth & Profile Sync
   useEffect(() => {
@@ -685,6 +697,11 @@ export default function App() {
     );
   }
 
+  const filteredJobs = useMemo(() => {
+    if (selectedCategory === 'Todas') return jobs;
+    return jobs.filter(j => j.category === selectedCategory);
+  }, [jobs, selectedCategory]);
+
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
       <header className="bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between z-[1001]">
@@ -754,11 +771,37 @@ export default function App() {
                 </div>
               </div>
 
+              {profile?.role === 'professional' && (
+                <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
+                  <button
+                    onClick={() => setSelectedCategory('Todas')}
+                    className={cn(
+                      "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+                      selectedCategory === 'Todas' ? "bg-orange-600 text-white" : "bg-white border border-zinc-200 text-zinc-600 hover:border-orange-200"
+                    )}
+                  >
+                    Todas
+                  </button>
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat.name}
+                      onClick={() => setSelectedCategory(cat.name)}
+                      className={cn(
+                        "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
+                        selectedCategory === cat.name ? "bg-orange-600 text-white" : "bg-white border border-zinc-200 text-zinc-600 hover:border-orange-200"
+                      )}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {displayMode === 'map' && profile?.role === 'professional' ? (
                 <div className="h-[500px] w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0">
                   <MapContainer center={[-34.6037, -58.3816]} zoom={13} style={{ height: '100%', width: '100%' }}>
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    {jobs.map(job => (
+                    {filteredJobs.map(job => (
                       <Marker 
                         key={job.id} 
                         position={[job.location.lat, job.location.lng]}
@@ -785,13 +828,13 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {jobs.length === 0 ? (
+                  {filteredJobs.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-zinc-300">
                       <Search className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
                       <p className="text-zinc-500">No hay trabajos para mostrar.</p>
                     </div>
                   ) : (
-                    jobs.map(job => (
+                    filteredJobs.map(job => (
                       <motion.div 
                         key={job.id}
                         whileHover={{ scale: 1.01 }}
@@ -859,11 +902,11 @@ export default function App() {
                     <div className="space-y-2">
                       <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Categoría</label>
                       <select name="category" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all bg-white" required>
-                        <option value="Plomería">Plomería</option>
-                        <option value="Electricidad">Electricidad</option>
-                        <option value="Pintura">Pintura</option>
-                        <option value="Carpintería">Carpintería</option>
-                        <option value="Limpieza">Limpieza</option>
+                        {CATEGORIES.map(cat => (
+                          <optgroup key={cat.group} label={cat.group}>
+                            <option value={cat.name}>{cat.name}</option>
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
                     <div className="space-y-2">
