@@ -37,6 +37,7 @@
         },
         "photos": { "type": "array", "items": { "type": "string" } },
         "assignedProfessionalId": { "type": "string" },
+        "isUrgent": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["clientId", "category", "title", "description", "status", "location", "createdAt"]

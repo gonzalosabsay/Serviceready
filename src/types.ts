@@ -27,6 +27,7 @@ export interface Job {
   };
   photos?: string[];
   assignedProfessionalId?: string;
+  isUrgent?: boolean;
   createdAt: string;
 }
 

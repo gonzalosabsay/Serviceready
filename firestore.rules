@@ -9,7 +9,7 @@ service cloud.firestore {
     // Fields: uid, displayName, email, photoURL, role, avgRating, numReviews, specialties
     //
     // Collection: jobs
-    // Fields: id, clientId, category, title, description, status, location, photos, assignedProfessionalId, createdAt
+    // Fields: id, clientId, category, title, description, status, location, photos, assignedProfessionalId, isUrgent, createdAt
     //
     // Collection: bids
     // Fields: id, jobId, professionalId, proposedPrice, message, createdAt
@@ -65,7 +65,8 @@ service cloud.firestore {
       return hasRequiredFields(['clientId', 'category', 'title', 'description', 'status', 'location', 'createdAt']) &&
              data.clientId is string && data.status in ['Open', 'Assigned', 'Completed'] &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.description is string && data.description.size() < 2000;
+             data.description is string && data.description.size() < 2000 &&
+             (!('isUrgent' in data) || data.isUrgent is bool);
     }
 
     function isValidBid(data) {
@@ -94,13 +95,13 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
       allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
     }
 
     match /jobs/{jobId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidJob(request.resource.data) && request.resource.data.clientId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidJob(request.resource.data) && (request.resource.data.clientId == request.auth.uid || isAdmin());
       allow update: if isAuthenticated() && (
         (resource.data.clientId == request.auth.uid && isValidJob(request.resource.data)) ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedProfessionalId', 'status']) && isAuthenticated()) ||

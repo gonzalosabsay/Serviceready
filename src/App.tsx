@@ -168,12 +168,13 @@ const TextArea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLText
   />
 );
 
-const Badge = ({ children, className, variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' }) => {
+const Badge = ({ children, className, variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' | 'danger' }) => {
   const variants = {
     default: 'bg-stone-100 text-stone-600 border-stone-200',
     success: 'bg-green-50 text-green-700 border-green-200',
     warning: 'bg-orange-50 text-orange-700 border-orange-200',
     info: 'bg-blue-50 text-blue-700 border-blue-200',
+    danger: 'bg-red-50 text-red-700 border-red-200',
   };
   return (
     <span className={cn(
@@ -206,6 +207,24 @@ const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean
 };
 
 // --- Main App ---
+
+const redIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const blueIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
 
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -560,6 +579,7 @@ export default function App() {
       category: formData.get('category') as string,
       description: formData.get('description') as string,
       status: 'Open' as JobStatus,
+      isUrgent: formData.get('isUrgent') === 'on',
       location: {
         lat: tempLocation?.lat || -34.6037,
         lng: tempLocation?.lng || -58.3816,
@@ -716,6 +736,57 @@ export default function App() {
       console.error("Error deleting chat:", err);
       setError("No se pudo eliminar la conversación. Por favor, intenta de nuevo.");
       handleFirestoreError(err, OperationType.DELETE, `bids/${bidToDelete}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const generateTestData = async () => {
+    setIsDeleting(true);
+    try {
+      const testUserId = "test-client-" + Math.random().toString(36).substring(7);
+      const testUser: UserProfile = {
+        uid: testUserId,
+        displayName: "Usuario de Prueba (CABA)",
+        email: "test@example.com",
+        photoURL: `https://picsum.photos/seed/${testUserId}/200`,
+        role: 'client',
+        avgRating: 5,
+        numReviews: 10
+      };
+
+      await setDoc(doc(db, 'users', testUserId), testUser);
+
+      const batch = writeBatch(db);
+      
+      CATEGORIES.forEach((cat, index) => {
+        // Random coords in CABA (approx bounds)
+        const lat = -34.65 + (Math.random() * 0.1);
+        const lng = -58.50 + (Math.random() * 0.14);
+        
+        const jobRef = doc(collection(db, 'jobs'));
+        batch.set(jobRef, {
+          clientId: testUserId,
+          title: `Necesito ${cat.name}${index % 3 === 0 ? ' URGENTE' : ''}`,
+          category: cat.name,
+          isUrgent: index % 3 === 0,
+          description: `Esta es una demanda de prueba para la categoría ${cat.name}. Se requiere un profesional con experiencia para realizar tareas de mantenimiento en la zona de Buenos Aires.`,
+          status: 'Open',
+          location: {
+            lat,
+            lng,
+            address: `Calle de Prueba ${100 + index}, CABA, Argentina`
+          },
+          createdAt: new Date(Date.now() - index * 3600000).toISOString()
+        });
+      });
+
+      await batch.commit();
+      setError("¡Datos de prueba generados con éxito!");
+      setView('home');
+    } catch (err) {
+      console.error("Error generating test data:", err);
+      setError("Error al generar datos de prueba.");
     } finally {
       setIsDeleting(false);
     }
@@ -910,6 +981,7 @@ export default function App() {
                       <Marker 
                         key={job.id} 
                         position={[job.location.lat, job.location.lng]}
+                        icon={job.isUrgent ? redIcon : blueIcon}
                         eventHandlers={{
                           click: () => {
                             setSelectedJob(job);
@@ -960,6 +1032,11 @@ export default function App() {
                               <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-2 py-0.5 text-[9px]">
                                 {job.status === 'Open' ? 'Abierto' : 'Completado'}
                               </Badge>
+                              {job.isUrgent && (
+                                <Badge variant="danger" className="px-2 py-0.5 text-[9px] flex items-center gap-1">
+                                  <Clock className="w-2.5 h-2.5" /> URGENTE
+                                </Badge>
+                              )}
                               <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
                                 {job.category}
                               </span>
@@ -984,10 +1061,12 @@ export default function App() {
                             <MapPin className="w-3.5 h-3.5 text-primary/60" /> 
                             <span className="truncate max-w-[200px]">{job.location.address}</span>
                           </div>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            <Clock className="w-3.5 h-3.5 text-primary/60" /> 
-                            <span>Urgente</span>
-                          </div>
+                          {job.isUrgent && (
+                            <div className="flex items-center gap-1.5 ml-auto text-destructive">
+                              <Clock className="w-3.5 h-3.5" /> 
+                              <span>Urgente</span>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     ))
@@ -1057,6 +1136,19 @@ export default function App() {
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
                       <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" />
+                    </div>
+
+                    <div className="flex items-center gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
+                      <input 
+                        type="checkbox" 
+                        name="isUrgent" 
+                        id="isUrgent"
+                        className="w-5 h-5 rounded border-red-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                      />
+                      <label htmlFor="isUrgent" className="flex items-center gap-2 cursor-pointer">
+                        <Clock className="w-4 h-4 text-red-600" />
+                        <span className="text-sm font-bold text-red-700 uppercase tracking-wider">¿Es un pedido urgente?</span>
+                      </label>
                     </div>
 
                     <div className="space-y-2">
@@ -1450,8 +1542,20 @@ export default function App() {
                     </div>
                   </div>
                   
-                  <Button variant="outline" className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-600 border-stone-200 hover:bg-stone-50">
+                  <Button 
+                    variant="outline" 
+                    className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-600 border-stone-200 hover:bg-stone-50"
+                  >
                     Editar Perfil
+                  </Button>
+
+                  <Button 
+                    variant="ghost" 
+                    onClick={generateTestData}
+                    disabled={isDeleting}
+                    className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-primary hover:bg-primary/5 border border-dashed border-primary/30"
+                  >
+                    {isDeleting ? 'Generando...' : 'Generar Demandas de Prueba'}
                   </Button>
                 </div>
               </div>
