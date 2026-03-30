@@ -129,36 +129,60 @@ const CATEGORIES = [
 
 const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }) => {
   const variants = {
-    primary: 'bg-orange-600 text-white hover:bg-orange-700',
-    secondary: 'bg-zinc-800 text-white hover:bg-zinc-900',
-    outline: 'border border-zinc-300 text-zinc-700 hover:bg-zinc-50',
-    ghost: 'text-zinc-600 hover:bg-zinc-100',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
+    primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
+    secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm',
+    outline: 'border border-border text-stone-700 hover:bg-stone-50 hover:text-stone-900',
+    ghost: 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
+    danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm',
   };
   return (
     <button 
-      className={cn('px-4 py-2 rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none', variants[variant], className)} 
+      className={cn(
+        'inline-flex items-center justify-center px-4 py-2.5 rounded-xl font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none select-none', 
+        variants[variant], 
+        className
+      )} 
       {...props} 
     />
   );
 };
 
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <input className={cn('w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all bg-white', className)} {...props} />
+  <input 
+    className={cn(
+      'flex h-12 w-full px-4 py-3 rounded-xl border border-input bg-white text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all', 
+      className
+    )} 
+    {...props} 
+  />
 );
 
 const TextArea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-  <textarea className={cn('w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all bg-white resize-none', className)} {...props} />
+  <textarea 
+    className={cn(
+      'flex min-h-[80px] w-full px-4 py-3 rounded-xl border border-input bg-white text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all resize-none', 
+      className
+    )} 
+    {...props} 
+  />
 );
 
 const Badge = ({ children, className, variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' }) => {
   const variants = {
-    default: 'bg-zinc-100 text-zinc-600',
-    success: 'bg-green-100 text-green-700',
-    warning: 'bg-orange-100 text-orange-700',
-    info: 'bg-blue-100 text-blue-700',
+    default: 'bg-stone-100 text-stone-600 border-stone-200',
+    success: 'bg-green-50 text-green-700 border-green-200',
+    warning: 'bg-orange-50 text-orange-700 border-orange-200',
+    info: 'bg-blue-50 text-blue-700 border-blue-200',
   };
-  return <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold', variants[variant], className)}>{children}</span>;
+  return (
+    <span className={cn(
+      'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border', 
+      variants[variant], 
+      className
+    )}>
+      {children}
+    </span>
+  );
 };
 
 const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
@@ -704,27 +728,29 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
-      <header className="bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between z-[1001]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
-            <Briefcase className="w-5 h-5 text-white" />
+      <header className="glass sticky top-0 z-[1001] px-6 py-4 flex items-center justify-between border-b border-border">
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setView('home')}>
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
+            <Briefcase className="w-6 h-6 text-white" />
           </div>
-          <span className="font-bold text-xl tracking-tight">ServiceReady</span>
+          <h1 className="text-xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
         </div>
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex flex-col items-end">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-400 font-bold">Estás como</span>
-            <span className="text-xs font-bold text-orange-600 uppercase">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+          <div className="hidden md:flex flex-col items-end mr-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
+              <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+            </div>
+            <Button 
+              variant="ghost" 
+              onClick={toggleRole} 
+              className="text-[9px] uppercase tracking-widest font-bold py-0 h-auto text-stone-500 hover:text-primary p-0"
+            >
+              Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
+            </Button>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={toggleRole} 
-            className="text-[10px] uppercase tracking-widest font-bold py-1 px-3 h-auto border-orange-200 text-orange-700 hover:bg-orange-50"
-          >
-            Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
-          </Button>
           <div 
-            className="w-10 h-10 rounded-full overflow-hidden border-2 border-zinc-100 cursor-pointer hover:border-orange-500 transition-colors"
+            className="w-10 h-10 rounded-xl overflow-hidden border-2 border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
             onClick={() => setView('profile')}
           >
             <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
@@ -743,21 +769,28 @@ export default function App() {
               className="p-6 max-w-4xl mx-auto w-full"
             >
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold">
-                  {profile?.role === 'client' ? 'Mis Pedidos' : 'Trabajos Disponibles'}
-                </h2>
-                <div className="flex items-center gap-2">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight text-stone-900">
+                    {profile?.role === 'client' ? 'Mis Pedidos' : 'Trabajos Disponibles'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {profile?.role === 'client' ? 'Gestiona tus solicitudes de servicio' : 'Encuentra nuevas oportunidades de trabajo'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
                   {profile?.role === 'professional' && (
-                    <div className="flex bg-white rounded-xl border border-zinc-200 p-1 mr-2">
+                    <div className="flex bg-white rounded-xl border border-border p-1 shadow-sm">
                       <button 
                         onClick={() => setDisplayMode('list')}
-                        className={cn('p-2 rounded-lg transition-all', displayMode === 'list' ? 'bg-orange-100 text-orange-600' : 'text-zinc-400')}
+                        aria-label="Vista de lista"
+                        className={cn('p-2 rounded-lg transition-all', displayMode === 'list' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
                       >
                         <ListIcon className="w-5 h-5" />
                       </button>
                       <button 
                         onClick={() => setDisplayMode('map')}
-                        className={cn('p-2 rounded-lg transition-all', displayMode === 'map' ? 'bg-orange-100 text-orange-600' : 'text-zinc-400')}
+                        aria-label="Vista de mapa"
+                        className={cn('p-2 rounded-lg transition-all', displayMode === 'map' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
                       >
                         <MapIcon className="w-5 h-5" />
                       </button>
@@ -776,8 +809,10 @@ export default function App() {
                   <button
                     onClick={() => setSelectedCategory('Todas')}
                     className={cn(
-                      "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
-                      selectedCategory === 'Todas' ? "bg-orange-600 text-white" : "bg-white border border-zinc-200 text-zinc-600 hover:border-orange-200"
+                      "px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all border shadow-sm",
+                      selectedCategory === 'Todas' 
+                        ? "bg-primary text-primary-foreground border-primary" 
+                        : "bg-white border-border text-stone-600 hover:border-primary/30 hover:bg-stone-50"
                     )}
                   >
                     Todas
@@ -787,8 +822,10 @@ export default function App() {
                       key={cat.name}
                       onClick={() => setSelectedCategory(cat.name)}
                       className={cn(
-                        "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
-                        selectedCategory === cat.name ? "bg-orange-600 text-white" : "bg-white border border-zinc-200 text-zinc-600 hover:border-orange-200"
+                        "px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all border shadow-sm whitespace-nowrap",
+                        selectedCategory === cat.name 
+                          ? "bg-primary text-primary-foreground border-primary" 
+                          : "bg-white border-border text-stone-600 hover:border-primary/30 hover:bg-stone-50"
                       )}
                     >
                       {cat.name}
@@ -829,39 +866,59 @@ export default function App() {
               ) : (
                 <div className="grid gap-4">
                   {filteredJobs.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-zinc-300">
-                      <Search className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-                      <p className="text-zinc-500">No hay trabajos para mostrar.</p>
+                    <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mb-4">
+                        <Search className="w-8 h-8 text-stone-300" />
+                      </div>
+                      <h3 className="text-lg font-bold text-stone-900 mb-1">Sin resultados</h3>
+                      <p className="text-muted-foreground text-sm max-w-[250px]">No encontramos trabajos que coincidan con tu búsqueda en este momento.</p>
                     </div>
                   ) : (
                     filteredJobs.map(job => (
                       <motion.div 
                         key={job.id}
-                        whileHover={{ scale: 1.01 }}
-                        className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-sm cursor-pointer"
+                        whileHover={{ y: -4 }}
+                        className="bg-white p-6 rounded-[2.5rem] border border-border shadow-sm cursor-pointer card-hover group relative overflow-hidden"
                         onClick={() => {
                           setSelectedJob(job);
                           setView('job-details');
                         }}
                       >
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="mb-2">
-                              {job.status}
-                            </Badge>
-                            <h3 className="font-bold text-xl">{job.title}</h3>
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 group-hover:bg-primary/10 transition-colors" />
+                        
+                        <div className="flex justify-between items-start mb-4 relative z-10">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-2 py-0.5 text-[9px]">
+                                {job.status === 'Open' ? 'Abierto' : 'Completado'}
+                              </Badge>
+                              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                {job.category}
+                              </span>
+                            </div>
+                            <h3 className="font-bold text-xl text-stone-900 group-hover:text-primary transition-colors leading-tight">{job.title}</h3>
                           </div>
-                          <span className="text-zinc-400 text-sm">
-                            {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-                          </span>
+                          <div className="text-right">
+                            <span className="text-stone-400 text-[10px] font-bold uppercase tracking-wider block mb-1">
+                              {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
+                            </span>
+                            <div className="flex items-center justify-end gap-1 text-primary">
+                              <span className="text-xs font-bold uppercase tracking-widest">Ver</span>
+                              <ChevronLeft className="w-4 h-4 rotate-180" />
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-zinc-600 line-clamp-2 mb-4">{job.description}</p>
-                        <div className="flex items-center gap-4 text-zinc-500 text-sm">
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-4 h-4" /> {job.location.address}
+                        
+                        <p className="text-stone-500 line-clamp-2 mb-6 text-sm leading-relaxed relative z-10">{job.description}</p>
+                        
+                        <div className="flex flex-wrap items-center gap-4 text-stone-400 text-[11px] font-bold uppercase tracking-wider relative z-10 border-t border-stone-50 pt-4">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-primary/60" /> 
+                            <span className="truncate max-w-[200px]">{job.location.address}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <Filter className="w-4 h-4" /> {job.category}
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <Clock className="w-3.5 h-3.5 text-primary/60" /> 
+                            <span>Urgente</span>
                           </div>
                         </div>
                       </motion.div>
@@ -875,108 +932,89 @@ export default function App() {
           {view === 'create-job' && (
             <motion.div 
               key="create-job"
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
               className="p-6 max-w-2xl mx-auto w-full"
             >
               {profile?.role !== 'client' ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-zinc-200">
-                  <p className="text-zinc-500">Solo los clientes pueden crear publicaciones.</p>
-                  <Button onClick={() => setView('home')} className="mt-4">Volver al Inicio</Button>
+                <div className="text-center py-20 bg-white rounded-[2.5rem] border border-border shadow-xl flex flex-col items-center">
+                  <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+                    <Briefcase className="w-8 h-8 text-destructive" />
+                  </div>
+                  <h3 className="text-xl font-bold text-stone-900 mb-2">Acceso restringido</h3>
+                  <p className="text-stone-500 text-sm max-w-[300px] mb-6">Solo los clientes pueden crear publicaciones de trabajo. Cambia tu rol para continuar.</p>
+                  <Button onClick={() => setView('home')} variant="secondary">Volver al Inicio</Button>
                 </div>
               ) : (
                 <>
                   <div className="flex items-center gap-4 mb-8">
-                    <Button variant="ghost" onClick={() => setView('home')} className="p-2">
-                      <ChevronLeft className="w-6 h-6" />
+                    <Button variant="ghost" onClick={() => setView('home')} className="p-2 hover:bg-stone-100 rounded-xl">
+                      <ChevronLeft className="w-6 h-6 text-stone-600" />
                     </Button>
-                    <h2 className="text-2xl font-bold">Publicar Trabajo (Demanda)</h2>
+                    <div>
+                      <h2 className="text-2xl font-bold text-stone-900">Publicar Trabajo</h2>
+                      <p className="text-stone-500 text-sm">Describe lo que necesitas para recibir presupuestos.</p>
+                    </div>
                   </div>
 
-                  <form onSubmit={createJob} className="space-y-6 bg-white p-8 rounded-3xl border border-zinc-200 shadow-xl">
+                  <form onSubmit={createJob} className="space-y-8 bg-white p-8 rounded-[2.5rem] border border-border shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
+                    
                     <div className="space-y-2">
-                      <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Título</label>
-                      <Input name="title" placeholder="Ej: Plomero para arreglar filtración" required />
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Título del trabajo</label>
+                      <Input name="title" placeholder="Ej: Plomero para arreglar filtración en cocina" required className="text-lg font-medium" />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Categoría</label>
-                      <select name="category" className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all bg-white" required>
-                        {CATEGORIES.map(cat => (
-                          <optgroup key={cat.group} label={cat.group}>
-                            <option value={cat.name}>{cat.name}</option>
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Ubicación exacta en el mapa</label>
-                      
-                      <div className="flex gap-2 mb-2">
-                        <div className="relative flex-1">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                          <Input 
-                            value={searchQuery}
-                            onChange={(e) => {
-                              setSearchQuery(e.target.value);
-                              setShowSuggestions(true);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            placeholder="Buscar dirección..." 
-                            className="pl-10"
-                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleGeocode())}
-                            onFocus={(e) => {
-                              e.stopPropagation();
-                              setShowSuggestions(true);
-                            }}
-                          />
-                          {showSuggestions && suggestions.length > 0 && (
-                            <div 
-                              className="absolute top-full left-0 right-0 bg-white border border-zinc-200 rounded-xl mt-1 shadow-xl z-[1010] overflow-hidden"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {suggestions.map((s, i) => (
-                                <button
-                                  key={i}
-                                  type="button"
-                                  onClick={() => handleSelectSuggestion(s)}
-                                  className="w-full text-left px-4 py-3 text-sm hover:bg-zinc-50 border-b border-zinc-100 last:border-0 transition-colors"
-                                >
-                                  {s.display_name}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                    
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Categoría</label>
+                        <select name="category" className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-stone-50 text-sm font-medium appearance-none cursor-pointer" required>
+                          {CATEGORIES.map(cat => (
+                            <optgroup key={cat.group} label={cat.group}>
+                              <option value={cat.name}>{cat.name}</option>
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Presupuesto estimado</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 font-bold">$</span>
+                          <Input name="budget" type="number" placeholder="Opcional" className="pl-8" />
                         </div>
-                        <Button type="button" variant="outline" onClick={handleGeocode} disabled={isGeocoding}>
-                          {isGeocoding ? 'Buscando...' : 'Buscar'}
-                        </Button>
-                        <Button type="button" variant="outline" onClick={handleGetCurrentLocation} title="Usar mi ubicación actual">
-                          <Navigation className="w-4 h-4" />
-                        </Button>
                       </div>
+                    </div>
 
-                      <div className="h-64 w-full rounded-2xl overflow-hidden border border-zinc-200 z-0">
-                        <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                          <LocationPicker onLocationSelect={(lat, lng) => setTempLocation({ lat, lng })} />
-                          <MapController center={mapCenter} />
-                          {tempLocation && <Marker position={[tempLocation.lat, tempLocation.lng]} />}
-                        </MapContainer>
-                      </div>
-                      <Input name="address" placeholder="Dirección o referencia adicional" required />
-                    </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Descripción</label>
-                      <TextArea name="description" placeholder="Describe lo que necesitas..." rows={4} required />
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
+                      <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" />
                     </div>
-                    <Button type="submit" className="w-full py-4 text-lg">Publicar Demanda</Button>
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio</label>
+                      <div className="rounded-2xl overflow-hidden border border-border shadow-inner">
+                        <LocationPicker 
+                          onLocationSelect={(loc) => setLocation(loc)} 
+                          initialLocation={location}
+                        />
+                      </div>
+                      {location && (
+                        <p className="text-[10px] font-bold text-primary mt-2 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {location.address}
+                        </p>
+                      )}
+                    </div>
+
+                    <Button type="submit" className="w-full py-4 text-base font-bold uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20 group">
+                      Publicar Ahora
+                      <Plus className="w-5 h-5 ml-2 group-hover:rotate-90 transition-transform" />
+                    </Button>
                   </form>
                 </>
               )}
             </motion.div>
           )}
-
           {view === 'job-details' && selectedJob && (
             <motion.div 
               key="job-details"
@@ -1082,12 +1120,21 @@ export default function App() {
           {view === 'messages' && (
             <motion.div 
               key="messages"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
               className="p-6 max-w-4xl mx-auto w-full"
             >
-              <h2 className="text-2xl font-bold mb-8">Conversaciones</h2>
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-black text-stone-900">Mensajes</h2>
+                  <p className="text-stone-500 text-sm">Gestioná tus conversaciones y presupuestos.</p>
+                </div>
+                <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center">
+                  <MessageSquare className="w-6 h-6 text-primary" />
+                </div>
+              </div>
+              
               <ConversationsList 
                 profile={profile} 
                 onSelectConversation={openChat} 
@@ -1100,8 +1147,8 @@ export default function App() {
                 onClose={() => setBidToDelete(null)} 
                 title="¿Eliminar conversación?"
               >
-                <p className="text-zinc-600 mb-6">Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación.</p>
-                <Button variant="danger" onClick={deleteChat} className="w-full">Eliminar Conversación</Button>
+                <p className="text-stone-600 mb-6">Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación.</p>
+                <Button variant="destructive" onClick={deleteChat} className="w-full py-4 rounded-xl font-bold uppercase tracking-widest">Eliminar Conversación</Button>
               </Modal>
             </motion.div>
           )}
@@ -1109,19 +1156,24 @@ export default function App() {
           {view === 'chat' && selectedBid && (
             <motion.div 
               key="chat"
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 50 }}
-              className="h-full flex flex-col bg-white"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              className="h-full flex flex-col bg-stone-50"
             >
-              <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Button variant="ghost" onClick={() => setView('messages')} className="p-2">
-                    <ChevronLeft className="w-6 h-6" />
+              <div className="glass px-6 py-4 border-b border-border flex items-center justify-between z-10">
+                <div className="flex items-center gap-4 min-w-0">
+                  <Button variant="ghost" onClick={() => setView('messages')} className="p-2 hover:bg-stone-100 rounded-xl">
+                    <ChevronLeft className="w-6 h-6 text-stone-600" />
                   </Button>
-                  <div>
-                    <h3 className="font-bold">Chat</h3>
-                    <p className="text-xs text-zinc-500">${selectedBid.proposedPrice}</p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl overflow-hidden border border-border flex-shrink-0">
+                      <img src={selectedBid.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-stone-900 truncate">{selectedBid.otherUser?.displayName}</h3>
+                      <p className="text-[10px] font-bold text-primary uppercase tracking-widest">${selectedBid.proposedPrice}</p>
+                    </div>
                   </div>
                 </div>
                 {selectedBid.job && (
@@ -1131,35 +1183,58 @@ export default function App() {
                       setSelectedJob(selectedBid.job || null);
                       setView('job-details');
                     }}
-                    className="text-orange-600 text-xs font-bold"
+                    className="text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 px-3"
                   >
                     Ver Trabajo
                   </Button>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
+                <div className="flex justify-center mb-8">
+                  <div className="bg-stone-200/50 backdrop-blur-sm px-4 py-1.5 rounded-full text-[10px] font-bold text-stone-500 uppercase tracking-widest border border-stone-300/30">
+                    Inicio de la conversación
+                  </div>
+                </div>
                 {messages.map(msg => (
                   <div key={msg.id} className={cn('flex flex-col', msg.senderId === profile?.uid ? 'items-end' : 'items-start')}>
-                    <div className={cn('max-w-[80%] px-4 py-2 rounded-2xl text-sm', msg.senderId === profile?.uid ? 'bg-orange-600 text-white rounded-tr-none' : 'bg-zinc-100 text-zinc-800 rounded-tl-none')}>
+                    <div className={cn(
+                      'max-w-[85%] px-4 py-3 rounded-[1.5rem] text-sm shadow-sm leading-relaxed', 
+                      msg.senderId === profile?.uid 
+                        ? 'bg-primary text-white rounded-tr-none shadow-primary/20' 
+                        : 'bg-white text-stone-800 rounded-tl-none border border-border'
+                    )}>
                       {msg.text}
                     </div>
+                    <span className="text-[9px] font-bold text-stone-400 mt-1 px-1 uppercase">
+                      {msg.createdAt ? formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true }) : 'Ahora'}
+                    </span>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
 
-              <form onSubmit={sendMessage} className="p-4 border-t border-zinc-200 flex gap-2">
-                <Input name="message" placeholder="Escribe..." autoComplete="off" />
-                <Button type="submit" className="p-3"><Send className="w-5 h-5" /></Button>
-              </form>
+              <div className="p-4 glass border-t border-border">
+                <form onSubmit={sendMessage} className="max-w-4xl mx-auto flex gap-2">
+                  <Input 
+                    name="message" 
+                    placeholder="Escribe un mensaje..." 
+                    autoComplete="off" 
+                    className="rounded-2xl bg-white border-border focus:ring-primary/10"
+                  />
+                  <Button type="submit" className="p-3 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-transform">
+                    <Send className="w-5 h-5" />
+                  </Button>
+                </form>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-zinc-200 px-6 py-3 flex items-center justify-around z-[1001]">
+      <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border px-6 py-3 flex items-center justify-around z-[1001] pb-safe">
         <NavButton active={view === 'home'} onClick={() => setView('home')} icon={<Briefcase />} label="Trabajos" />
-        <NavButton active={view === 'messages'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" badge={unreadCount} />
+        <NavButton active={view === 'messages' || view === 'chat'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" badge={unreadCount} />
         <NavButton active={view === 'profile'} onClick={() => setView('profile')} icon={<UserIcon />} label="Perfil" />
       </nav>
 
@@ -1169,23 +1244,70 @@ export default function App() {
             initial={{ opacity: 0, y: '100%' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
-            className="fixed inset-0 bg-white z-[1002] p-6 overflow-y-auto"
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-0 bg-stone-50 z-[1002] flex flex-col"
           >
-            <div className="flex items-center justify-between mb-12">
-              <Button variant="ghost" onClick={() => setView('home')} className="p-2"><ChevronLeft className="w-6 h-6" /></Button>
-              <h2 className="text-2xl font-bold">Mi Perfil</h2>
-              <Button variant="ghost" onClick={handleLogout} className="text-red-600"><LogOut className="w-6 h-6" /></Button>
+            <div className="glass px-6 py-4 border-b border-border flex items-center justify-between">
+              <Button variant="ghost" onClick={() => setView('home')} className="p-2 hover:bg-stone-100 rounded-xl">
+                <ChevronLeft className="w-6 h-6 text-stone-600" />
+              </Button>
+              <h2 className="text-xl font-bold text-stone-900">Mi Perfil</h2>
+              <Button variant="ghost" onClick={handleLogout} className="text-destructive hover:bg-destructive/10 rounded-xl p-2">
+                <LogOut className="w-6 h-6" />
+              </Button>
             </div>
 
-            <div className="flex flex-col items-center text-center mb-12">
-              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-orange-100 mb-6">
-                <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
-              </div>
-              <h3 className="text-3xl font-bold mb-2">{profile?.displayName}</h3>
-              <p className="text-zinc-500 mb-4">{profile?.email}</p>
-              <div className="flex items-center gap-2 bg-orange-50 px-4 py-2 rounded-full">
-                <Star className="w-5 h-5 text-orange-500 fill-orange-500" />
-                <span className="font-bold text-orange-700">{profile?.avgRating || 0}</span>
+            <div className="flex-1 overflow-y-auto p-8">
+              <div className="max-w-md mx-auto">
+                <div className="flex flex-col items-center text-center mb-12">
+                  <div className="relative group">
+                    <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl mb-6 group-hover:scale-105 transition-transform duration-500">
+                      <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="absolute -bottom-2 -right-2 bg-primary text-white p-2 rounded-xl shadow-lg border-2 border-white">
+                      <Camera className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <h3 className="text-3xl font-black text-stone-900 mb-1">{profile?.displayName}</h3>
+                  <p className="text-stone-500 text-sm font-medium mb-6">{profile?.email}</p>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="flex flex-col items-center">
+                      <div className="flex items-center gap-1.5 bg-yellow-400/10 px-4 py-2 rounded-2xl border border-yellow-400/20">
+                        <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                        <span className="font-black text-yellow-700 text-lg">{profile?.avgRating || 0}</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Calificación</span>
+                    </div>
+                    <div className="w-px h-10 bg-border" />
+                    <div className="flex flex-col items-center">
+                      <div className="bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20">
+                        <span className="font-black text-primary text-lg">24</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Trabajos</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
+                    <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Información de cuenta</h4>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-stone-500">Rol actual</span>
+                        <Badge variant="secondary" className="capitalize">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-stone-500">Miembro desde</span>
+                        <span className="text-sm font-bold text-stone-700">Marzo 2024</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button variant="outline" className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-600 border-stone-200 hover:bg-stone-50">
+                    Editar Perfil
+                  </Button>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -1198,16 +1320,22 @@ export default function App() {
 
 function NavButton({ active, onClick, icon, label, badge }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }) {
   return (
-    <button onClick={onClick} className={cn('flex flex-col items-center gap-1 relative', active ? 'text-orange-600' : 'text-zinc-400')}>
-      <div className="relative">
-        {React.cloneElement(icon as React.ReactElement, { className: 'w-6 h-6' })}
+    <button onClick={onClick} className={cn('flex flex-col items-center gap-1 relative transition-all active:scale-90', active ? 'text-primary' : 'text-stone-400')}>
+      <div className="relative p-1">
+        {React.cloneElement(icon as React.ReactElement, { className: cn('w-6 h-6 transition-transform', active && 'scale-110') })}
         {badge !== undefined && badge > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+          <span className="absolute -top-1 -right-1 bg-primary text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-primary/20 animate-in zoom-in">
             {badge > 9 ? '9+' : badge}
           </span>
         )}
       </div>
-      <span className="text-[10px] font-bold uppercase">{label}</span>
+      <span className={cn("text-[9px] font-bold uppercase tracking-widest transition-all", active ? "opacity-100 translate-y-0" : "opacity-60")}>{label}</span>
+      {active && (
+        <motion.div 
+          layoutId="nav-active"
+          className="absolute -bottom-1 w-1 h-1 bg-primary rounded-full"
+        />
+      )}
     </button>
   );
 }
@@ -1243,24 +1371,34 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
     return unsubscribe;
   }, [jobId]);
 
-  if (bids.length === 0) return <p className="text-zinc-400 text-center py-8">Sin postulaciones.</p>;
+  if (bids.length === 0) return (
+    <div className="text-center py-12 bg-stone-50 rounded-[2rem] border border-dashed border-border">
+      <p className="text-stone-400 text-sm font-medium">Aún no hay postulaciones para este trabajo.</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {bids.map(bid => (
-        <div key={bid.id} className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100">
+        <div key={bid.id} className="bg-white p-4 rounded-[2rem] border border-border shadow-sm flex items-center justify-between card-hover group">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-14 h-14 rounded-2xl overflow-hidden bg-stone-100 border border-border group-hover:border-primary/30 transition-colors flex-shrink-0">
               <img src={bid.professional?.photoURL} alt="" className="w-full h-full object-cover" />
             </div>
-            <div>
-              <h4 className="font-bold">{bid.professional?.displayName}</h4>
-              <p className="text-sm text-zinc-500">{bid.lastMessage || bid.message}</p>
+            <div className="min-w-0">
+              <h4 className="font-bold text-stone-900 truncate">{bid.professional?.displayName}</h4>
+              <p className="text-sm text-stone-500 truncate leading-tight">{bid.lastMessage || bid.message}</p>
+              <div className="flex items-center gap-1 mt-1">
+                <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                <span className="text-[10px] font-bold text-stone-600">4.9 (12 trabajos)</span>
+              </div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-xl font-bold text-orange-600">${bid.proposedPrice}</p>
-            <Button onClick={() => onSelectBid(bid)} className="py-1 px-3 text-xs">Contactar</Button>
+          <div className="text-right flex-shrink-0 pl-4">
+            <p className="text-lg font-black text-primary mb-1">${bid.proposedPrice}</p>
+            <Button onClick={() => onSelectBid(bid)} className="py-1.5 px-4 text-xs font-bold uppercase tracking-wider rounded-xl">
+              Contactar
+            </Button>
           </div>
         </div>
       ))}
@@ -1326,40 +1464,50 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
     return unique.sort((a, b) => new Date(b.lastMessageAt || b.createdAt).getTime() - new Date(a.lastMessageAt || a.createdAt).getTime());
   }, [profBids, clientBids]);
 
-  if (conversations.length === 0) return <p className="text-zinc-400 text-center py-20">No tienes conversaciones activas.</p>;
+  if (conversations.length === 0) return (
+    <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">
+      <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mb-4">
+        <MessageSquare className="w-8 h-8 text-stone-300" />
+      </div>
+      <h3 className="text-lg font-bold text-stone-900 mb-1">Sin mensajes</h3>
+      <p className="text-muted-foreground text-sm max-w-[250px]">Aún no tienes conversaciones activas. ¡Empieza a contactar para ver tus chats!</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <AnimatePresence mode="popLayout">
         {conversations.map(conv => (
           <motion.div 
             layout
             key={conv.id} 
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -100 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
             onClick={() => onSelectConversation(conv)}
             className={cn(
-              "bg-white p-6 rounded-3xl border flex items-center gap-4 cursor-pointer transition-all",
-              unreadBidIds.has(conv.id) ? "border-orange-500 shadow-md bg-orange-50/30" : "border-zinc-200 shadow-sm hover:border-orange-200"
+              "bg-white p-4 rounded-[2rem] border flex items-center gap-4 cursor-pointer transition-all card-hover group",
+              unreadBidIds.has(conv.id) 
+                ? "border-primary/30 shadow-md bg-primary/5 ring-1 ring-primary/20" 
+                : "border-border shadow-sm hover:border-primary/20"
             )}
           >
-            <div className="relative">
-              <div className="w-14 h-14 rounded-full overflow-hidden bg-zinc-100 flex-shrink-0">
+            <div className="relative flex-shrink-0">
+              <div className="w-14 h-14 rounded-2xl overflow-hidden bg-stone-100 border border-border group-hover:border-primary/30 transition-colors">
                 <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
               </div>
               {unreadBidIds.has(conv.id) && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-500 rounded-full border-2 border-white" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full border-2 border-white shadow-sm animate-pulse" />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-start">
-                <h4 className={cn("truncate", unreadBidIds.has(conv.id) ? "font-black text-zinc-900" : "font-bold text-zinc-800")}>
+              <div className="flex justify-between items-start mb-1">
+                <h4 className={cn("truncate text-base", unreadBidIds.has(conv.id) ? "font-bold text-stone-900" : "font-semibold text-stone-700")}>
                   {conv.otherUser?.displayName}
                 </h4>
                 <div className="flex items-center gap-2">
-                  <span className={cn("text-xs", unreadBidIds.has(conv.id) ? "text-orange-600 font-bold" : "text-zinc-400")}>
+                  <span className={cn("text-[10px] font-bold uppercase tracking-wider", unreadBidIds.has(conv.id) ? "text-primary" : "text-stone-400")}>
                     {formatDistanceToNow(new Date(conv.lastMessageAt || conv.createdAt), { addSuffix: true })}
                   </span>
                   <button 
@@ -1367,16 +1515,20 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
                       e.stopPropagation();
                       onDeleteChat(conv.id);
                     }}
-                    className="p-1 text-zinc-400 hover:text-red-500 transition-colors"
+                    aria-label="Eliminar chat"
+                    className="p-1.5 text-stone-300 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
-              <p className={cn("text-sm font-medium truncate", unreadBidIds.has(conv.id) ? "text-orange-700" : "text-orange-600")}>
-                {conv.job?.title}
-              </p>
-              <p className={cn("text-sm truncate", unreadBidIds.has(conv.id) ? "text-zinc-900 font-bold" : "text-zinc-500")}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Briefcase className="w-3 h-3 text-primary/60" />
+                <p className={cn("text-xs font-bold truncate uppercase tracking-tight", unreadBidIds.has(conv.id) ? "text-primary" : "text-stone-500")}>
+                  {conv.job?.title}
+                </p>
+              </div>
+              <p className={cn("text-sm truncate leading-tight", unreadBidIds.has(conv.id) ? "text-stone-900 font-medium" : "text-stone-500")}>
                 {conv.lastMessage || conv.message}
               </p>
             </div>
