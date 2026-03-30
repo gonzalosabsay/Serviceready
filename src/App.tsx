@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -1214,16 +1214,31 @@ function NavButton({ active, onClick, icon, label, badge }: { active: boolean, o
 
 function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bid) => void }) {
   const [bids, setBids] = useState<(Bid & { professional?: UserProfile })[]>([]);
+  const lastUpdateRef = useRef(0);
 
   useEffect(() => {
     const q = query(collection(db, 'bids'), where('jobId', '==', jobId), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const updateId = ++lastUpdateRef.current;
       const bData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
-      const fullBids = await Promise.all(bData.map(async (bid) => {
-        const profSnap = await getDoc(doc(db, 'users', bid.professionalId));
-        return { ...bid, professional: profSnap.data() as UserProfile };
-      }));
-      setBids(fullBids);
+      
+      try {
+        const fullBids = await Promise.all(bData.map(async (bid) => {
+          try {
+            const profSnap = await getDoc(doc(db, 'users', bid.professionalId));
+            return { ...bid, professional: profSnap.data() as UserProfile };
+          } catch (err) {
+            console.error("Error fetching professional profile:", err);
+            return { ...bid };
+          }
+        }));
+        
+        if (updateId === lastUpdateRef.current) {
+          setBids(fullBids);
+        }
+      } catch (err) {
+        console.error("Error processing bids snapshot:", err);
+      }
     });
     return unsubscribe;
   }, [jobId]);
@@ -1256,40 +1271,48 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
 function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string> }) {
   const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
+  const lastUpdateProfRef = useRef(0);
+  const lastUpdateClientRef = useRef(0);
 
   useEffect(() => {
     if (!profile) return;
 
-    // Query bids where user is professional OR client
+    const handleSnapshot = async (snapshot: any, updateRef: React.MutableRefObject<number>, setter: (data: any) => void) => {
+      const updateId = ++updateRef.current;
+      const bData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Bid));
+      
+      try {
+        const enriched = await Promise.all(bData.map(async (bid: Bid) => {
+          const otherUserId = bid.professionalId === profile.uid ? bid.clientId : bid.professionalId;
+          try {
+            const [otherUserSnap, jobSnap] = await Promise.all([
+              getDoc(doc(db, 'users', otherUserId)),
+              getDoc(doc(db, 'jobs', bid.jobId))
+            ]);
+            return { 
+              ...bid, 
+              otherUser: otherUserSnap.data() as UserProfile,
+              job: jobSnap.data() as Job
+            };
+          } catch (err) {
+            console.error("Error enriching bid data:", bid.id, err);
+            return { ...bid };
+          }
+        }));
+
+        if (updateId === updateRef.current) {
+          setter(enriched);
+        }
+      } catch (err) {
+        console.error("Error processing snapshot:", err);
+      }
+    };
+
     const qProfessional = query(collection(db, 'bids'), where('professionalId', '==', profile.uid));
     const qClient = query(collection(db, 'bids'), where('clientId', '==', profile.uid));
 
-    const handleSnapshot = async (snapshot: any) => {
-      const bData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Bid));
-      const enriched = await Promise.all(bData.map(async (bid: Bid) => {
-        const otherUserId = bid.professionalId === profile.uid ? bid.clientId : bid.professionalId;
-        const [otherUserSnap, jobSnap] = await Promise.all([
-          getDoc(doc(db, 'users', otherUserId)),
-          getDoc(doc(db, 'jobs', bid.jobId))
-        ]);
-        return { 
-          ...bid, 
-          otherUser: otherUserSnap.data() as UserProfile,
-          job: jobSnap.data() as Job
-        };
-      }));
-      return enriched;
-    };
-
-    const unsubProf = onSnapshot(qProfessional, async (snap) => {
-      const bids = await handleSnapshot(snap);
-      setProfBids(bids);
-    });
-
-    const unsubClient = onSnapshot(qClient, async (snap) => {
-      const bids = await handleSnapshot(snap);
-      setClientBids(bids);
-    });
+    const unsubProf = onSnapshot(qProfessional, (snap) => handleSnapshot(snap, lastUpdateProfRef, setProfBids));
+    const unsubClient = onSnapshot(qClient, (snap) => handleSnapshot(snap, lastUpdateClientRef, setClientBids));
 
     return () => {
       unsubProf();
