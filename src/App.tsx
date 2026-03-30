@@ -1226,7 +1226,7 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
         const fullBids = await Promise.all(bData.map(async (bid) => {
           try {
             const profSnap = await getDoc(doc(db, 'users', bid.professionalId));
-            return { ...bid, professional: profSnap.data() as UserProfile };
+            return { ...bid, professional: { uid: profSnap.id, ...profSnap.data() } as UserProfile };
           } catch (err) {
             console.error("Error fetching professional profile:", err);
             return { ...bid };
@@ -1291,8 +1291,8 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
             ]);
             return { 
               ...bid, 
-              otherUser: otherUserSnap.data() as UserProfile,
-              job: jobSnap.data() as Job
+              otherUser: { uid: otherUserSnap.id, ...otherUserSnap.data() } as UserProfile,
+              job: { id: jobSnap.id, ...jobSnap.data() } as Job
             };
           } catch (err) {
             console.error("Error enriching bid data:", bid.id, err);
