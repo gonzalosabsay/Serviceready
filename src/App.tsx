@@ -186,7 +186,7 @@ const Badge = ({ children, className, variant = 'default' }: { children: React.R
   );
 };
 
-const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) => {
+const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode, disabled?: boolean }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -198,7 +198,7 @@ const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
         <h3 className="text-xl font-bold mb-4">{title}</h3>
         {children}
         <div className="mt-6 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={onClose} disabled={disabled}>Cancelar</Button>
         </div>
       </motion.div>
     </div>
@@ -221,6 +221,7 @@ export default function App() {
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [bidToDelete, setBidToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [tempLocation, setTempLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-34.6037, -58.3816]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -661,6 +662,8 @@ export default function App() {
 
   const deleteJob = async () => {
     if (!selectedJob) return;
+    console.log("Deleting job:", selectedJob.id);
+    setIsDeleting(true);
     try {
       // Delete associated bids and messages first
       const bidsQuery = query(collection(db, 'bids'), where('jobId', '==', selectedJob.id));
@@ -681,12 +684,18 @@ export default function App() {
       setSelectedJob(null);
       setShowDeleteConfirm(false);
     } catch (err) {
+      console.error("Error deleting job:", err);
+      setError("No se pudo eliminar la publicación. Por favor, intenta de nuevo.");
       handleFirestoreError(err, OperationType.DELETE, `jobs/${selectedJob.id}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const deleteChat = async () => {
     if (!bidToDelete) return;
+    console.log("Deleting chat:", bidToDelete);
+    setIsDeleting(true);
     try {
       // Delete associated messages first to clear notifications
       const msgsQuery = query(collection(db, 'messages'), where('bidId', '==', bidToDelete));
@@ -704,7 +713,11 @@ export default function App() {
         setView('messages');
       }
     } catch (err) {
+      console.error("Error deleting chat:", err);
+      setError("No se pudo eliminar la conversación. Por favor, intenta de nuevo.");
       handleFirestoreError(err, OperationType.DELETE, `bids/${bidToDelete}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1139,6 +1152,7 @@ export default function App() {
                   <Button 
                     variant="danger" 
                     onClick={() => setShowDeleteConfirm(true)} 
+                    disabled={isDeleting}
                     className="ml-auto flex items-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1151,9 +1165,17 @@ export default function App() {
                 isOpen={showDeleteConfirm} 
                 onClose={() => setShowDeleteConfirm(false)} 
                 title="¿Eliminar pedido?"
+                disabled={isDeleting}
               >
                 <p className="text-zinc-600 mb-6">Esta acción no se puede deshacer. Se eliminarán todas las postulaciones asociadas.</p>
-                <Button variant="danger" onClick={deleteJob} className="w-full">Confirmar Eliminación</Button>
+                <Button 
+                  variant="danger" 
+                  onClick={deleteJob} 
+                  disabled={isDeleting}
+                  className="w-full"
+                >
+                  {isDeleting ? 'Eliminando...' : 'Confirmar Eliminación'}
+                </Button>
               </Modal>
 
               <div className="grid md:grid-cols-3 gap-8">
@@ -1241,15 +1263,24 @@ export default function App() {
                 onSelectConversation={openChat} 
                 onDeleteChat={(bidId) => setBidToDelete(bidId)}
                 unreadBidIds={unreadBidIds}
+                isDeleting={isDeleting}
               />
 
               <Modal 
                 isOpen={!!bidToDelete} 
                 onClose={() => setBidToDelete(null)} 
                 title="¿Eliminar conversación?"
+                disabled={isDeleting}
               >
                 <p className="text-stone-600 mb-6">Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación.</p>
-                <Button variant="destructive" onClick={deleteChat} className="w-full py-4 rounded-xl font-bold uppercase tracking-widest">Eliminar Conversación</Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={deleteChat} 
+                  disabled={isDeleting}
+                  className="w-full py-4 rounded-xl font-bold uppercase tracking-widest"
+                >
+                  {isDeleting ? 'Eliminando...' : 'Eliminar Conversación'}
+                </Button>
               </Modal>
             </motion.div>
           )}
@@ -1428,7 +1459,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-      {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[1005] shadow-xl">{error}</div>}
+      {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[3000] shadow-xl">{error}</div>}
     </div>
   );
 }
@@ -1527,7 +1558,7 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
   );
 }
 
-function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string> }) {
+function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds, isDeleting }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string>, isDeleting: boolean }) {
   const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const lastUpdateProfRef = useRef(0);
@@ -1653,8 +1684,9 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
                       e.stopPropagation();
                       onDeleteChat(conv.id);
                     }}
+                    disabled={isDeleting}
                     aria-label="Eliminar chat"
-                    className="p-1.5 text-stone-300 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all"
+                    className="p-1.5 text-stone-300 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-all disabled:opacity-50 disabled:pointer-events-none"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
