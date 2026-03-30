@@ -210,6 +210,11 @@ export default function App() {
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
 
+  const filteredJobs = useMemo(() => {
+    if (selectedCategory === 'Todas') return jobs;
+    return jobs.filter(j => j.category === selectedCategory);
+  }, [jobs, selectedCategory]);
+
   // Auth & Profile Sync
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -696,11 +701,6 @@ export default function App() {
       </div>
     );
   }
-
-  const filteredJobs = useMemo(() => {
-    if (selectedCategory === 'Todas') return jobs;
-    return jobs.filter(j => j.category === selectedCategory);
-  }, [jobs, selectedCategory]);
 
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
