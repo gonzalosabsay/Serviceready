@@ -115,7 +115,7 @@ service cloud.firestore {
       }
       allow read: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isJobOwner(resource.data.jobId));
       allow create: if isAuthenticated() && isValidBid(request.resource.data) && request.resource.data.professionalId == request.auth.uid;
-      allow update: if isAuthenticated() && isOwner(resource.data.professionalId) && isValidBid(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid) && isValidBid(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid);
     }
 

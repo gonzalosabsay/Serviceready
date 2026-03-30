@@ -239,6 +239,13 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
   const filteredJobs = useMemo(() => {
     if (selectedCategory === 'Todas') return jobs;
     return jobs.filter(j => j.category === selectedCategory);
@@ -610,13 +617,16 @@ export default function App() {
     }
   };
 
+  const [isSending, setIsSending] = useState(false);
+
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!profile || !selectedBid) return;
+    if (!profile || !selectedBid || isSending) return;
     const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
     const text = input.value;
     if (!text.trim()) return;
 
+    setIsSending(true);
     const recipientId = selectedBid.professionalId === profile.uid ? selectedBid.clientId : selectedBid.professionalId;
     const timestamp = new Date().toISOString();
     const newMessage = {
@@ -643,6 +653,8 @@ export default function App() {
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'messages');
       setError('Error al enviar el mensaje.');
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -1292,7 +1304,7 @@ export default function App() {
                       {msg.text}
                     </div>
                     <span className="text-[9px] font-bold text-stone-400 mt-1 px-1 uppercase">
-                      {msg.createdAt ? formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true }) : 'Ahora'}
+                      {msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true }) : 'Ahora'}
                     </span>
                   </div>
                 ))}
@@ -1303,12 +1315,17 @@ export default function App() {
                 <form onSubmit={sendMessage} className="max-w-4xl mx-auto flex gap-2">
                   <Input 
                     name="message" 
-                    placeholder="Escribe un mensaje..." 
+                    placeholder={isSending ? "Enviando..." : "Escribe un mensaje..."}
                     autoComplete="off" 
+                    disabled={isSending}
                     className="rounded-2xl bg-white border-border focus:ring-primary/10"
                   />
-                  <Button type="submit" className="p-3 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-transform">
-                    <Send className="w-5 h-5" />
+                  <Button 
+                    type="submit" 
+                    disabled={isSending}
+                    className="p-3 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-transform"
+                  >
+                    <Send className={cn("w-5 h-5", isSending && "animate-pulse")} />
                   </Button>
                 </form>
               </div>
