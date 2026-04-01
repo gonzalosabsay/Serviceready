@@ -898,32 +898,32 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
-      <header className="glass sticky top-0 z-[1001] px-2 py-1.5 lg:px-6 lg:py-4 flex items-center justify-between border-b border-border">
+      <header className="glass sticky top-0 z-[1001] px-2 py-2 lg:px-6 lg:py-4 flex items-center justify-between border-b border-border">
         <div className="flex items-center gap-1.5 lg:gap-3 cursor-pointer group" onClick={() => setView('home')}>
-          <div className="w-6 h-6 lg:w-10 lg:h-10 bg-primary rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
-            <Briefcase className="w-3.5 h-3.5 lg:w-6 lg:h-6 text-white" />
+          <div className="w-8 h-8 lg:w-12 lg:h-12 bg-primary rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
+            <Briefcase className="w-4.5 h-4.5 lg:w-7 lg:h-7 text-white" />
           </div>
-          <h1 className="text-sm lg:text-xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
+          <h1 className="text-base lg:text-2xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
         </div>
         <div className="flex items-center gap-1.5 md:gap-4">
           <div className="flex flex-col items-end mr-0.5 md:mr-2">
             <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
-              <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+              <span className="text-[11px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
+              <span className="text-[11px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <div className="sm:hidden">
-              <span className="text-[6px] font-black text-primary uppercase bg-primary/10 px-1 py-0 rounded-md mb-0 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+              <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-0.5 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <Button 
               variant="ghost" 
               onClick={toggleRole} 
-              className="text-[5px] sm:text-[9px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
+              className="text-[7px] sm:text-[10px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
             >
               Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
             </Button>
           </div>
           <div 
-            className="w-6 h-6 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
+            className="w-8 h-8 lg:w-12 lg:h-12 rounded-lg lg:rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
             onClick={() => setView('profile')}
           >
             <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
