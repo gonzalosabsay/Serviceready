@@ -110,6 +110,7 @@ service cloud.firestore {
                       (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false || isAdmin());
       allow update: if isValidUser(request.resource.data) &&
                       ((isOwner(userId) && request.resource.data.isAdmin == resource.data.isAdmin) || isAdmin());
+      allow delete: if isAdmin();
     }
 
     match /jobs/{jobId} {

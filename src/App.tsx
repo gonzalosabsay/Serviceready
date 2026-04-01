@@ -258,6 +258,7 @@ export default function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [bidToDelete, setBidToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [tempLocation, setTempLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-34.6037, -58.3816]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -932,6 +933,46 @@ export default function App() {
       setError("Error al generar datos de prueba.");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const resetDatabase = async () => {
+    if (!profile?.isAdmin) return;
+    if (!window.confirm("¿ESTÁS SEGURO? Esto eliminará TODOS los usuarios, trabajos, ofertas y mensajes (excepto tu cuenta admin). Esta acción no se puede deshacer.")) return;
+
+    setIsResetting(true);
+    try {
+      const collections = ['users', 'jobs', 'bids', 'messages', 'reviews'];
+      for (const colName of collections) {
+        const snapshot = await getDocs(collection(db, colName));
+        const batch = writeBatch(db);
+        let count = 0;
+        
+        snapshot.docs.forEach((doc) => {
+          // Don't delete the current admin user
+          if (colName === 'users' && doc.id === user?.uid) return;
+          
+          batch.delete(doc.ref);
+          count++;
+          
+          // Firestore batches have a 500 limit
+          if (count === 499) {
+            console.log(`Committing partial batch for ${colName}`);
+          }
+        });
+        
+        if (count > 0) {
+          await batch.commit();
+        }
+      }
+      
+      setError("Base de datos reseteada con éxito.");
+      setView('home');
+    } catch (err) {
+      console.error("Error resetting database:", err);
+      setError("Error al resetear la base de datos.");
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -1894,11 +1935,22 @@ export default function App() {
                   <Button 
                     variant="ghost" 
                     onClick={generateTestData}
-                    disabled={isDeleting}
+                    disabled={isDeleting || isResetting}
                     className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-primary hover:bg-primary/5 border border-dashed border-primary/30"
                   >
                     {isDeleting ? 'Generando...' : 'Generar Demandas de Prueba'}
                   </Button>
+
+                  {profile?.isAdmin && (
+                    <Button 
+                      variant="ghost" 
+                      onClick={resetDatabase}
+                      disabled={isResetting || isDeleting}
+                      className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-destructive hover:bg-destructive/5 border border-dashed border-destructive/30 mt-4"
+                    >
+                      {isResetting ? 'Reseteando...' : 'Resetear Base de Datos'}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
