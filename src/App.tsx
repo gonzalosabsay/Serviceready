@@ -110,11 +110,21 @@ const LocationPicker = ({ onLocationSelect }: { onLocationSelect: (lat: number, 
   return null;
 };
 
-const MapController = ({ center }: { center: [number, number] }) => {
+const MapController = ({ center, zoom, displayMode }: { center: [number, number], zoom?: number, displayMode?: string }) => {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 15);
-  }, [center, map]);
+    if (center) {
+      map.setView(center, zoom || map.getZoom());
+    }
+  }, [center, zoom, map]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [map, displayMode]);
+
   return null;
 };
 
@@ -209,6 +219,8 @@ const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean
 
 // --- Main App ---
 
+const BUENOS_AIRES_CENTER: [number, number] = [-34.6037, -58.3816];
+
 const redIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -273,7 +285,7 @@ export default function App() {
   const scrollToJob = (jobId: string) => {
     setHighlightedJobId(jobId);
     const element = jobRefs.current[jobId];
-    if (element) {
+    if (element && element.offsetParent !== null) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
@@ -886,32 +898,32 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
-      <header className="glass sticky top-0 z-[1001] px-6 py-4 flex items-center justify-between border-b border-border">
-        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setView('home')}>
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
-            <Briefcase className="w-6 h-6 text-white" />
+      <header className="glass sticky top-0 z-[1001] px-2 py-1.5 lg:px-6 lg:py-4 flex items-center justify-between border-b border-border">
+        <div className="flex items-center gap-1.5 lg:gap-3 cursor-pointer group" onClick={() => setView('home')}>
+          <div className="w-6 h-6 lg:w-10 lg:h-10 bg-primary rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
+            <Briefcase className="w-3.5 h-3.5 lg:w-6 lg:h-6 text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
+          <h1 className="text-sm lg:text-xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
         </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          <div className="flex flex-col items-end mr-1 md:mr-2">
+        <div className="flex items-center gap-1.5 md:gap-4">
+          <div className="flex flex-col items-end mr-0.5 md:mr-2">
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
               <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <div className="sm:hidden">
-              <span className="text-[9px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-1 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+              <span className="text-[6px] font-black text-primary uppercase bg-primary/10 px-1 py-0 rounded-md mb-0 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <Button 
               variant="ghost" 
               onClick={toggleRole} 
-              className="text-[8px] sm:text-[9px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
+              className="text-[5px] sm:text-[9px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
             >
               Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
             </Button>
           </div>
           <div 
-            className="w-10 h-10 rounded-xl overflow-hidden border-2 border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
+            className="w-6 h-6 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
             onClick={() => setView('profile')}
           >
             <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
@@ -966,15 +978,15 @@ export default function App() {
               </div>
 
               {profile?.role === 'professional' && (
-                <div className="relative group mb-10 -mx-4 px-4">
+                <div className="relative group mb-6 lg:mb-10 -mx-4 px-4">
                   <div 
                     ref={categoriesRef}
-                    className="flex gap-4 overflow-x-auto py-3 px-16 no-scrollbar scroll-smooth"
+                    className="flex gap-2 lg:gap-4 overflow-x-auto py-2 lg:py-3 px-10 lg:px-16 no-scrollbar scroll-smooth"
                   >
                     <button
                       onClick={() => setSelectedCategory('Todas')}
                       className={cn(
-                        "px-8 py-3.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm shrink-0",
+                        "px-4 lg:px-8 py-2 lg:py-3.5 rounded-full text-[10px] lg:text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm shrink-0",
                         selectedCategory === 'Todas' 
                           ? "bg-primary text-primary-foreground border-primary shadow-xl shadow-primary/20 scale-105" 
                           : "bg-white border-border text-stone-600 hover:border-primary/40 hover:bg-stone-50"
@@ -987,7 +999,7 @@ export default function App() {
                         key={cat.name}
                         onClick={() => setSelectedCategory(cat.name)}
                         className={cn(
-                          "px-8 py-3.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm whitespace-nowrap shrink-0",
+                          "px-4 lg:px-8 py-2 lg:py-3.5 rounded-full text-[10px] lg:text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm whitespace-nowrap shrink-0",
                           selectedCategory === cat.name 
                             ? "bg-primary text-primary-foreground border-primary shadow-xl shadow-primary/20 scale-105" 
                             : "bg-white border-border text-stone-600 hover:border-primary/40 hover:bg-stone-50"
@@ -999,8 +1011,8 @@ export default function App() {
                   </div>
                   
                   {/* Navigation Arrows with Improved Aesthetics */}
-                  <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
-                  <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
+                  <div className="absolute left-0 top-0 bottom-0 w-12 lg:w-24 bg-gradient-to-r from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
+                  <div className="absolute right-0 top-0 bottom-0 w-12 lg:w-24 bg-gradient-to-l from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
 
                   <div className="absolute top-1/2 -translate-y-1/2 left-4 z-20 opacity-0 group-hover:opacity-100 transition-all duration-500 hidden md:block">
                     <button 
@@ -1047,7 +1059,7 @@ export default function App() {
                         whileHover={{ y: -4 }}
                         animate={highlightedJobId === job.id ? { scale: 1.02, borderColor: 'var(--color-primary)' } : { scale: 1, borderColor: 'var(--color-border)' }}
                         className={cn(
-                          "bg-white py-28 px-12 rounded-2xl border shadow-lg cursor-pointer card-hover group relative overflow-hidden transition-all duration-500 flex flex-col items-center text-center justify-center min-h-[380px]",
+                          "bg-white py-6 lg:py-28 px-4 lg:px-12 rounded-2xl border shadow-lg cursor-pointer card-hover group relative overflow-hidden transition-all duration-500 flex flex-col items-center text-center justify-center min-h-[160px] lg:min-h-[380px]",
                           highlightedJobId === job.id ? "border-primary ring-4 ring-primary/10 bg-primary/[0.01] shadow-2xl shadow-primary/5" : "border-border"
                         )}
                         onClick={() => {
@@ -1058,45 +1070,44 @@ export default function App() {
                       >
                         {/* Left Orange Illumination */}
                         {highlightedJobId === job.id && (
-                          <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary shadow-[10px_0_30px_rgba(249,115,22,0.3)] z-20" />
+                          <div className="absolute left-0 top-0 bottom-0 w-1 lg:w-2 bg-primary shadow-[10px_0_30px_rgba(249,115,22,0.3)] z-20" />
                         )}
                         
-                        <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -mr-24 -mt-24 group-hover:bg-primary/10 transition-colors" />
-                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/5 rounded-full -ml-16 -mb-16 group-hover:bg-primary/10 transition-colors" />
+                        <div className="absolute top-0 right-0 w-24 lg:w-48 h-24 lg:h-48 bg-primary/5 rounded-full -mr-12 lg:-mr-24 -mt-12 lg:-mt-24 group-hover:bg-primary/10 transition-colors" />
                         
-                        <div className="flex flex-col items-center mb-8 relative z-10 w-full">
-                          <div className="flex flex-wrap justify-center items-center gap-3 mb-6">
-                            <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-4 py-1.5 text-[10px] font-bold">
+                        <div className="flex flex-col items-center mb-2 lg:mb-8 relative z-10 w-full">
+                          <div className="flex flex-wrap justify-center items-center gap-1.5 lg:gap-3 mb-2 lg:mb-6">
+                            <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-1.5 lg:px-4 py-0.5 lg:py-1.5 text-[7px] lg:text-[10px] font-bold">
                               {job.status === 'Open' ? 'Abierto' : 'Completado'}
                             </Badge>
                             {job.isUrgent && (
-                              <Badge variant="danger" className="px-4 py-1.5 text-[10px] font-bold flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5" /> URGENTE
+                              <Badge variant="danger" className="px-1.5 lg:px-4 py-0.5 lg:py-1.5 text-[7px] lg:text-[10px] font-bold flex items-center gap-1 lg:gap-1.5">
+                                <Clock className="w-2 lg:w-3.5 h-2 lg:h-3.5" /> URGENTE
                               </Badge>
                             )}
-                            <span className="text-[10px] font-black text-primary bg-primary/10 px-4 py-1.5 rounded-full uppercase tracking-[0.15em]">
+                            <span className="text-[7px] lg:text-[10px] font-black text-primary bg-primary/10 px-1.5 lg:px-4 py-0.5 lg:py-1.5 rounded-full uppercase tracking-wider lg:tracking-[0.15em]">
                               {job.category}
                             </span>
                           </div>
                           
-                          <h3 className="font-bold text-3xl text-stone-900 group-hover:text-primary transition-colors leading-tight mb-4 max-w-[90%]">{job.title}</h3>
+                          <h3 className="font-bold text-base lg:text-3xl text-stone-900 group-hover:text-primary transition-colors leading-tight mb-1 lg:mb-4 max-w-[95%] lg:max-w-[90%]">{job.title}</h3>
                           
-                          <div className="flex items-center justify-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
-                            <span>Publicado {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true, locale: es })}</span>
+                          <div className="flex items-center justify-center gap-2 text-stone-400 text-[9px] lg:text-xs font-bold uppercase tracking-widest">
+                            <span>{formatDistanceToNow(new Date(job.createdAt), { addSuffix: true, locale: es })}</span>
                           </div>
                         </div>
                         
-                        <p className="text-stone-500 line-clamp-3 mb-10 text-lg leading-relaxed relative z-10 max-w-[85%]">{job.description}</p>
+                        <p className="text-stone-500 line-clamp-1 lg:line-clamp-3 mb-3 lg:mb-10 text-xs lg:text-lg leading-relaxed relative z-10 max-w-[90%] lg:max-w-[85%]">{job.description}</p>
                         
-                        <div className="flex flex-col items-center gap-6 w-full relative z-10 pt-8 border-t border-stone-100">
-                          <div className="flex items-center justify-center gap-2 text-stone-500 text-sm font-bold uppercase tracking-wider">
-                            <MapPin className="w-5 h-5 text-primary" /> 
-                            <span className="truncate max-w-[400px]">{job.location.address}</span>
+                        <div className="flex flex-col items-center gap-2 lg:gap-6 w-full relative z-10 pt-3 lg:pt-8 border-t border-stone-100">
+                          <div className="flex items-center justify-center gap-1.5 lg:gap-2 text-stone-500 text-[9px] lg:text-sm font-bold uppercase tracking-wider">
+                            <MapPin className="w-3 lg:w-5 h-3 lg:h-5 text-primary" /> 
+                            <span className="truncate max-w-[180px] lg:max-w-[400px]">{job.location.address}</span>
                           </div>
                           
-                          <div className="flex items-center justify-center gap-3 text-primary group-hover:scale-110 transition-transform">
-                            <span className="text-sm font-black uppercase tracking-[0.25em]">Ver Detalles</span>
-                            <ChevronLeft className="w-6 h-6 rotate-180" />
+                          <div className="flex items-center justify-center gap-2 lg:gap-3 text-primary group-hover:scale-110 transition-transform">
+                            <span className="text-[9px] lg:text-sm font-black uppercase tracking-wider lg:tracking-[0.25em]">Ver Detalles</span>
+                            <ChevronLeft className="w-3.5 lg:w-6 h-3.5 lg:h-6 rotate-180" />
                           </div>
                         </div>
                       </motion.div>
@@ -1110,8 +1121,9 @@ export default function App() {
                     "h-[500px] lg:h-full w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0",
                     displayMode === 'list' ? "hidden lg:block" : "block"
                   )}>
-                    <MapContainer center={[-34.6037, -58.3816]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                    <MapContainer center={BUENOS_AIRES_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <MapController center={BUENOS_AIRES_CENTER} displayMode={displayMode} />
                       {filteredJobs.map(job => (
                         <Marker 
                           key={job.id} 
