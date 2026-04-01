@@ -117,24 +117,24 @@ service cloud.firestore {
       function isJobOwner(jobId) {
         return get(/databases/$(database)/documents/jobs/$(jobId)).data.clientId == request.auth.uid;
       }
-      allow read: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isJobOwner(resource.data.jobId));
+      allow read: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isJobOwner(resource.data.jobId) || isAdmin());
       allow create: if isAuthenticated() && isValidBid(request.resource.data) && request.resource.data.professionalId == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid) && isValidBid(request.resource.data);
-      allow delete: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid);
+      allow update: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin()) && isValidBid(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
     }
 
     match /messages/{messageId} {
       function isBidParticipant(bidId) {
         let bid = get(/databases/$(database)/documents/bids/$(bidId)).data;
         let job = get(/databases/$(database)/documents/jobs/$(bid.jobId)).data;
-        return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid;
+        return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid || isAdmin();
       }
       function isBidParticipantWrite(bidId) {
         let bid = getAfter(/databases/$(database)/documents/bids/$(bidId)).data;
         let job = get(/databases/$(database)/documents/jobs/$(bid.jobId)).data;
-        return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid;
+        return bid.professionalId == request.auth.uid || job.clientId == request.auth.uid || isAdmin();
       }
-      allow read: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId));
+      allow read: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId) || isAdmin());
       allow create: if isAuthenticated() && isValidMessage(request.resource.data) && request.resource.data.senderId == request.auth.uid && isBidParticipantWrite(request.resource.data.bidId);
       allow update: if isAuthenticated() && (
         (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read == true) ||
