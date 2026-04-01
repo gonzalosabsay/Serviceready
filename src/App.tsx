@@ -280,6 +280,7 @@ export default function App() {
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
   const [profDescription, setProfDescription] = useState('');
   const [profLicense, setProfLicense] = useState('');
@@ -685,6 +686,54 @@ export default function App() {
       setProfile({ ...profile, role: newRole });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+    }
+  };
+
+  const handleEditProfile = () => {
+    if (!profile) return;
+    setFirstName(profile.firstName || '');
+    setLastName(profile.lastName || '');
+    setUsername(profile.username || '');
+    setBirthDate(profile.birthDate || '');
+    setPhoneNumber(profile.phoneNumber || '');
+    setPhotoURL(profile.photoURL || '');
+    setProfSpecialties(profile.specialties || []);
+    setProfDescription(profile.professionalDescription || '');
+    setProfLicense(profile.licenseNumber || '');
+    setShowEditProfile(true);
+  };
+
+  const updateProfileData = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !profile) return;
+    
+    setIsCompletingProfile(true);
+    try {
+      const updatedData: Partial<UserProfile> = {
+        firstName,
+        lastName,
+        username,
+        birthDate,
+        phoneNumber,
+        photoURL,
+      };
+
+      if (profile.role === 'professional') {
+        updatedData.specialties = profSpecialties;
+        updatedData.professionalDescription = profDescription;
+        updatedData.licenseNumber = profLicense;
+        updatedData.isProfessionalProfileComplete = true;
+      }
+
+      await updateDoc(doc(db, 'users', user.uid), updatedData);
+      setProfile({ ...profile, ...updatedData });
+      setShowEditProfile(false);
+      setError("Perfil actualizado con éxito.");
+    } catch (err) {
+      console.error("Error updating profile:", err);
+      setError("Error al actualizar el perfil.");
+    } finally {
+      setIsCompletingProfile(false);
     }
   };
 
@@ -2199,6 +2248,7 @@ export default function App() {
                   
                   <Button 
                     variant="outline" 
+                    onClick={handleEditProfile}
                     className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-600 border-stone-200 hover:bg-stone-50"
                   >
                     Editar Perfil
@@ -2373,6 +2423,146 @@ export default function App() {
                     {isDeleting ? 'Guardando...' : 'Completar Registro Profesional'}
                   </Button>
                 </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showEditProfile && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Editar Perfil</h2>
+                <button onClick={() => setShowEditProfile(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                  <Plus className="w-6 h-6 text-stone-400 rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={updateProfileData} className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Nombre</label>
+                    <Input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Apellido</label>
+                    <Input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Nombre de Usuario</label>
+                  <Input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Teléfono</label>
+                  <Input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">URL Foto de Perfil</label>
+                  <Input
+                    type="url"
+                    value={photoURL}
+                    onChange={(e) => setPhotoURL(e.target.value)}
+                  />
+                </div>
+
+                {profile?.role === 'professional' && (
+                  <>
+                    <div className="border-t border-stone-100 pt-6">
+                      <h3 className="text-sm font-bold text-stone-900 uppercase tracking-tight mb-4">Datos Profesionales</h3>
+                      
+                      <div className="mb-6">
+                        <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Oficios</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {CATEGORIES.map(cat => (
+                            <button
+                              key={cat.name}
+                              type="button"
+                              onClick={() => {
+                                if (profSpecialties.includes(cat.name)) {
+                                  setProfSpecialties(profSpecialties.filter(s => s !== cat.name));
+                                } else {
+                                  setProfSpecialties([...profSpecialties, cat.name]);
+                                }
+                              }}
+                              className={cn(
+                                "px-4 py-3 rounded-2xl text-[10px] font-bold transition-all border-2 text-left flex items-center justify-between",
+                                profSpecialties.includes(cat.name)
+                                  ? "bg-primary/10 border-primary text-primary shadow-sm"
+                                  : "bg-white border-stone-100 text-stone-500 hover:border-stone-200"
+                              )}
+                            >
+                              {cat.name}
+                              {profSpecialties.includes(cat.name) && <CheckCircle className="w-3 h-3" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mb-6">
+                        <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Descripción Profesional</label>
+                        <textarea
+                          value={profDescription}
+                          onChange={(e) => setProfDescription(e.target.value)}
+                          className="w-full px-6 py-4 rounded-2xl bg-stone-50 border-2 border-stone-100 focus:border-primary focus:bg-white transition-all outline-none text-sm min-h-[100px] resize-none"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Matrícula</label>
+                        <Input
+                          type="text"
+                          value={profLicense}
+                          onChange={(e) => setProfLicense(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <Button 
+                  type="submit" 
+                  disabled={isCompletingProfile}
+                  className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest"
+                >
+                  {isCompletingProfile ? 'Guardando...' : 'Guardar Cambios'}
+                </Button>
               </form>
             </motion.div>
           </motion.div>
