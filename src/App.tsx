@@ -275,6 +275,7 @@ export default function App() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [photoURL, setPhotoURL] = useState('');
   const [imageOption, setImageOption] = useState<'url' | 'file'>('url');
+  const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
@@ -357,10 +358,22 @@ export default function App() {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile;
             const shouldBeAdmin = u.email ? ADMIN_EMAILS.includes(u.email) : false;
-            console.log("Profile sync - Email:", u.email, "shouldBeAdmin:", shouldBeAdmin, "currentIsAdmin:", data.isAdmin);
             
+            // Check if profile is complete
+            const isComplete = !!(data.firstName && data.lastName && data.username && data.birthDate && data.phoneNumber);
+            
+            if (!isComplete) {
+              setIsCompletingProfile(true);
+              // Pre-fill what we can from Auth/Firestore if not already in state (e.g. from signup form)
+              setFirstName(prev => prev || data.firstName || u.displayName?.split(' ')[0] || '');
+              setLastName(prev => prev || data.lastName || u.displayName?.split(' ').slice(1).join(' ') || '');
+              setUsername(prev => prev || data.username || u.email?.split('@')[0] || '');
+              setPhotoURL(prev => prev || data.photoURL || u.photoURL || '');
+            } else {
+              setIsCompletingProfile(false);
+            }
+
             if (shouldBeAdmin && !data.isAdmin) {
-              // Update existing profile to include isAdmin flag
               const updatedProfile = { ...data, isAdmin: true };
               await updateDoc(docRef, { isAdmin: true });
               setProfile(updatedProfile);
@@ -368,50 +381,19 @@ export default function App() {
               setProfile(data);
             }
           } else {
-            const { 
-              firstName: fName, 
-              lastName: lName, 
-              username: uName, 
-              birthDate: bDate, 
-              phoneNumber: pPhone, 
-              photoURL: pPhoto 
-            } = registrationData.current;
-
-            const newProfile: UserProfile = {
-              uid: u.uid,
-              displayName: fName && lName ? `${fName} ${lName}` : (u.displayName || 'User'),
-              firstName: fName || (u.displayName?.split(' ')[0] || ''),
-              lastName: lName || (u.displayName?.split(' ').slice(1).join(' ') || ''),
-              username: uName || (u.email?.split('@')[0] || u.uid.slice(0, 8)),
-              email: u.email || '',
-              photoURL: pPhoto || u.photoURL || '',
-              birthDate: bDate || '',
-              phoneNumber: pPhone || '',
-              role: 'client',
-              avgRating: 0,
-              numReviews: 0,
-              isProfessionalProfileComplete: false,
-              isAdmin: u.email ? ADMIN_EMAILS.includes(u.email) : false
-            };
-            await setDoc(docRef, newProfile);
-            
-            // Sync Auth profile
-            try {
-              await updateProfile(u, {
-                displayName: newProfile.displayName,
-                photoURL: newProfile.photoURL
-              });
-            } catch (authUpdateErr) {
-              console.error("Error updating auth profile:", authUpdateErr);
-            }
-
-            setProfile(newProfile);
+            // Profile doesn't exist at all
+            setIsCompletingProfile(true);
+            setFirstName(prev => prev || u.displayName?.split(' ')[0] || '');
+            setLastName(prev => prev || u.displayName?.split(' ').slice(1).join(' ') || '');
+            setUsername(prev => prev || u.email?.split('@')[0] || '');
+            setPhotoURL(prev => prev || u.photoURL || '');
           }
         } catch (err) {
           handleFirestoreError(err, OperationType.GET, `users/${u.uid}`);
         }
       } else {
         setProfile(null);
+        setIsCompletingProfile(false);
       }
       setLoading(false);
     });
@@ -566,6 +548,50 @@ export default function App() {
         setPhotoURL(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCompleteProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setLoading(true);
+    try {
+      const newProfile: UserProfile = {
+        uid: user.uid,
+        displayName: `${firstName} ${lastName}`,
+        firstName,
+        lastName,
+        username,
+        email: user.email || '',
+        photoURL: photoURL || user.photoURL || '',
+        birthDate,
+        phoneNumber,
+        role: 'client',
+        avgRating: 0,
+        numReviews: 0,
+        isProfessionalProfileComplete: false,
+        isAdmin: user.email ? ADMIN_EMAILS.includes(user.email) : false
+      };
+      
+      await setDoc(doc(db, 'users', user.uid), newProfile);
+      
+      // Sync Auth profile
+      try {
+        await updateProfile(user, {
+          displayName: newProfile.displayName,
+          photoURL: newProfile.photoURL
+        });
+      } catch (authUpdateErr) {
+        console.error("Error updating auth profile:", authUpdateErr);
+      }
+
+      setProfile(newProfile);
+      setIsCompletingProfile(false);
+    } catch (err) {
+      console.error("Error completing profile:", err);
+      setError("Error al completar el perfil. Inténtalo de nuevo.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1038,6 +1064,143 @@ export default function App() {
       <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-50">
         <div className="w-16 h-16 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-zinc-500 font-medium animate-pulse">ServiceReady está cargando...</p>
+      </div>
+    );
+  }
+
+  if (user && isCompletingProfile) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white p-6 overflow-y-auto">
+        <div className="max-w-md w-full text-center py-8">
+          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <UserIcon className="w-10 h-10 text-primary" />
+          </div>
+          <h1 className="text-3xl font-bold text-zinc-900 mb-2 tracking-tight">Completa tu Perfil</h1>
+          <p className="text-zinc-500 mb-8 text-sm">Necesitamos unos datos adicionales para que puedas empezar.</p>
+          
+          <form onSubmit={handleCompleteProfile} className="space-y-4 mb-6 text-left">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Nombre</label>
+                <Input 
+                  value={firstName} 
+                  onChange={(e) => setFirstName(e.target.value)} 
+                  placeholder="Juan" 
+                  required 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Apellido</label>
+                <Input 
+                  value={lastName} 
+                  onChange={(e) => setLastName(e.target.value)} 
+                  placeholder="Pérez" 
+                  required 
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Usuario</label>
+                <Input 
+                  value={username} 
+                  onChange={(e) => setUsername(e.target.value)} 
+                  placeholder="juanperez" 
+                  required 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Nacimiento</label>
+                <Input 
+                  type="date"
+                  value={birthDate} 
+                  onChange={(e) => setBirthDate(e.target.value)} 
+                  required 
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Celular</label>
+              <Input 
+                type="tel"
+                value={phoneNumber} 
+                onChange={(e) => setPhoneNumber(e.target.value)} 
+                placeholder="+54 9 11 ..." 
+                required 
+              />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 mb-2">
+                <button 
+                  type="button"
+                  onClick={() => { setImageOption('url'); }}
+                  className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'url' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+                >
+                  URL de Imagen
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setImageOption('file'); }}
+                  className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'file' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+                >
+                  Subir Archivo
+                </button>
+              </div>
+
+              {imageOption === 'url' ? (
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
+                  <Input 
+                    type="url"
+                    value={photoURL} 
+                    onChange={(e) => setPhotoURL(e.target.value)} 
+                    placeholder="https://..." 
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Adjuntar Foto Perfil</label>
+                  <div className="relative">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileChange}
+                      className="hidden" 
+                      id="profile-upload-complete"
+                    />
+                    <label 
+                      htmlFor="profile-upload-complete" 
+                      className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                    >
+                      {photoURL ? (
+                        <div className="flex items-center gap-2">
+                          <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
+                          <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-zinc-400">
+                          <Plus className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase tracking-widest">Seleccionar Imagen</span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full py-4 text-sm font-black uppercase tracking-widest shadow-lg shadow-primary/20">
+              Guardar y Continuar
+            </Button>
+          </form>
+          
+          <Button variant="ghost" onClick={() => signOut(auth)} className="text-zinc-400 text-xs uppercase tracking-widest font-bold">
+            Cerrar Sesión
+          </Button>
+        </div>
       </div>
     );
   }
