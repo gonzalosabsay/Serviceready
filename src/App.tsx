@@ -286,6 +286,27 @@ export default function App() {
   const categoriesRef = useRef<HTMLDivElement>(null);
   const jobRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
+  // Refs for registration data to avoid stale closures in onAuthStateChanged
+  const registrationData = useRef({
+    firstName: '',
+    lastName: '',
+    username: '',
+    birthDate: '',
+    phoneNumber: '',
+    photoURL: ''
+  });
+
+  useEffect(() => {
+    registrationData.current = {
+      firstName,
+      lastName,
+      username,
+      birthDate,
+      phoneNumber,
+      photoURL
+    };
+  }, [firstName, lastName, username, birthDate, phoneNumber, photoURL]);
+
   const scrollCategories = (direction: 'left' | 'right') => {
     if (categoriesRef.current) {
       const scrollAmount = 200;
@@ -323,6 +344,7 @@ export default function App() {
   // Auth & Profile Sync
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setLoading(true);
       setUser(u);
       if (u) {
         try {
@@ -342,16 +364,25 @@ export default function App() {
               setProfile(data);
             }
           } else {
+            const { 
+              firstName: fName, 
+              lastName: lName, 
+              username: uName, 
+              birthDate: bDate, 
+              phoneNumber: pPhone, 
+              photoURL: pPhoto 
+            } = registrationData.current;
+
             const newProfile: UserProfile = {
               uid: u.uid,
-              displayName: firstName && lastName ? `${firstName} ${lastName}` : (u.displayName || 'User'),
-              firstName: firstName || (u.displayName?.split(' ')[0] || ''),
-              lastName: lastName || (u.displayName?.split(' ').slice(1).join(' ') || ''),
-              username: username || (u.email?.split('@')[0] || u.uid.slice(0, 8)),
+              displayName: fName && lName ? `${fName} ${lName}` : (u.displayName || 'User'),
+              firstName: fName || (u.displayName?.split(' ')[0] || ''),
+              lastName: lName || (u.displayName?.split(' ').slice(1).join(' ') || ''),
+              username: uName || (u.email?.split('@')[0] || u.uid.slice(0, 8)),
               email: u.email || '',
-              photoURL: photoURL || u.photoURL || '',
-              birthDate: birthDate || '',
-              phoneNumber: phoneNumber || '',
+              photoURL: pPhoto || u.photoURL || '',
+              birthDate: bDate || '',
+              phoneNumber: pPhone || '',
               role: 'client',
               avgRating: 0,
               numReviews: 0,
@@ -1060,18 +1091,22 @@ export default function App() {
             <div className="hidden sm:flex items-center gap-2">
               {profile?.isAdmin && <Badge variant="danger" className="text-[8px] px-1.5 py-0">Admin</Badge>}
               <span className="text-[11px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
-              <span className="text-[11px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+              <span className="text-[11px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">
+                {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : 'Cargando...'}
+              </span>
             </div>
             <div className="sm:hidden flex items-center gap-1">
               {profile?.isAdmin && <Badge variant="danger" className="text-[6px] px-1 py-0">Admin</Badge>}
-              <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-0.5 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
+              <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-0.5 block">
+                {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : '...'}
+              </span>
             </div>
             <Button 
               variant="ghost" 
               onClick={toggleRole} 
               className="text-[7px] sm:text-[10px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
             >
-              Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
+              Cambiar a {profile ? (profile.role === 'client' ? 'Profesional' : 'Cliente') : '...'}
             </Button>
           </div>
           <div 
@@ -1114,10 +1149,10 @@ export default function App() {
                   <div className="flex items-center justify-between mb-8">
                     <div>
                       <h2 className="text-2xl font-bold tracking-tight text-stone-900">
-                        {profile?.role === 'client' ? 'Mis Pedidos' : 'Trabajos Disponibles'}
+                        {profile?.role === 'professional' ? 'Trabajos Disponibles' : 'Mis Pedidos'}
                       </h2>
                       <p className="text-sm text-muted-foreground">
-                        {profile?.role === 'client' ? 'Gestiona tus solicitudes de servicio' : 'Encuentra nuevas oportunidades de trabajo'}
+                        {profile?.role === 'professional' ? 'Encuentra nuevas oportunidades de trabajo' : 'Gestiona tus solicitudes de servicio'}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
