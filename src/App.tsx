@@ -12,6 +12,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   deleteUser,
+  reauthenticateWithPopup,
   updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
@@ -1086,10 +1087,27 @@ export default function App() {
 
     setIsDeleting(true);
     try {
-      // 1. Delete Firestore profile
+      // 1. Re-authenticate if it's a Google user (to avoid requires-recent-login)
+      const isGoogleUser = user.providerData.some(p => p.providerId === 'google.com');
+      if (isGoogleUser) {
+        const provider = new GoogleAuthProvider();
+        try {
+          await reauthenticateWithPopup(user, provider);
+        } catch (reauthErr: any) {
+          console.error("Re-authentication failed:", reauthErr);
+          if (reauthErr.code === 'auth/popup-closed-by-user') {
+            setError("Debes completar la autenticación para eliminar tu cuenta.");
+            setIsDeleting(false);
+            return;
+          }
+          throw reauthErr;
+        }
+      }
+
+      // 2. Delete Firestore profile
       await deleteDoc(doc(db, 'users', user.uid));
       
-      // 2. Delete Auth account
+      // 3. Delete Auth account
       await deleteUser(user);
       
       setUser(null);
@@ -1100,7 +1118,7 @@ export default function App() {
     } catch (err: any) {
       console.error("Error deleting account:", err);
       if (err.code === 'auth/requires-recent-login') {
-        setError("Por seguridad, debes haber iniciado sesión recientemente para eliminar tu cuenta. Por favor, cierra sesión y vuelve a entrar.");
+        setError("Por seguridad, debes haber iniciado sesión recientemente para eliminar tu cuenta. Por favor, vuelve a intentarlo.");
       } else {
         setError("Error al eliminar la cuenta. Inténtalo de nuevo.");
       }
