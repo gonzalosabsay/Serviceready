@@ -258,6 +258,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAccountDeleteConfirm, setShowAccountDeleteConfirm] = useState(false);
   const [bidToDelete, setBidToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -993,8 +995,6 @@ export default function App() {
 
   const resetDatabase = async () => {
     if (!profile?.isAdmin) return;
-    if (!window.confirm("¿ESTÁS SEGURO? Esto eliminará TODOS los perfiles, trabajos, ofertas y mensajes de la base de datos (Firestore).\n\nIMPORTANTE: Los usuarios de autenticación (emails/logins) NO se pueden borrar automáticamente desde aquí por seguridad de Firebase. Deberás borrarlos manualmente en la Consola de Firebase para que puedan volver a registrarse con el mismo email.")) return;
-
     setIsResetting(true);
     try {
       const collections = ['users', 'jobs', 'bids', 'messages', 'reviews'];
@@ -1023,6 +1023,7 @@ export default function App() {
       
       setError("Base de datos (Firestore) reseteada con éxito. Recuerda borrar los usuarios en la Consola de Firebase.");
       setView('home');
+      setShowResetConfirm(false);
     } catch (err) {
       console.error("Error resetting database:", err);
       setError("Error al resetear la base de datos.");
@@ -1033,7 +1034,6 @@ export default function App() {
 
   const deleteMyAccount = async () => {
     if (!user) return;
-    if (!window.confirm("¿Estás seguro de que quieres eliminar tu cuenta? Esta acción es irreversible y borrará tu perfil y tu acceso.")) return;
 
     setIsDeleting(true);
     try {
@@ -1046,6 +1046,7 @@ export default function App() {
       setUser(null);
       setProfile(null);
       setView('home');
+      setShowAccountDeleteConfirm(false);
       setError("Tu cuenta ha sido eliminada con éxito.");
     } catch (err: any) {
       console.error("Error deleting account:", err);
@@ -2218,7 +2219,7 @@ export default function App() {
                     <div className="space-y-4 mt-4">
                       <Button 
                         variant="ghost" 
-                        onClick={resetDatabase}
+                        onClick={() => setShowResetConfirm(true)}
                         disabled={isResetting || isDeleting}
                         className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-destructive hover:bg-destructive/5 border border-dashed border-destructive/30"
                       >
@@ -2238,12 +2239,50 @@ export default function App() {
 
                   <Button 
                     variant="ghost" 
-                    onClick={deleteMyAccount}
+                    onClick={() => setShowAccountDeleteConfirm(true)}
                     disabled={isDeleting || isResetting}
                     className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-400 hover:text-destructive hover:bg-destructive/5 mt-8"
                   >
                     Eliminar mi cuenta
                   </Button>
+
+                  <Modal 
+                    isOpen={showResetConfirm} 
+                    onClose={() => setShowResetConfirm(false)} 
+                    title="¿Resetear Base de Datos?"
+                    disabled={isResetting}
+                  >
+                    <p className="text-zinc-600 mb-6">
+                      ¿ESTÁS SEGURO? Esto eliminará TODOS los perfiles, trabajos, ofertas y mensajes de la base de datos (Firestore).
+                      <br /><br />
+                      IMPORTANTE: Los usuarios de autenticación (emails/logins) NO se pueden borrar automáticamente desde aquí por seguridad de Firebase. Deberás borrarlos manualmente en la Consola de Firebase para que puedan volver a registrarse con el mismo email.
+                    </p>
+                    <Button 
+                      variant="danger" 
+                      onClick={resetDatabase} 
+                      disabled={isResetting}
+                      className="w-full"
+                    >
+                      {isResetting ? 'Reseteando...' : 'Confirmar Reset Total'}
+                    </Button>
+                  </Modal>
+
+                  <Modal 
+                    isOpen={showAccountDeleteConfirm} 
+                    onClose={() => setShowAccountDeleteConfirm(false)} 
+                    title="¿Eliminar tu cuenta?"
+                    disabled={isDeleting}
+                  >
+                    <p className="text-zinc-600 mb-6">Esta acción es irreversible y borrará tu perfil y tu acceso.</p>
+                    <Button 
+                      variant="danger" 
+                      onClick={deleteMyAccount} 
+                      disabled={isDeleting}
+                      className="w-full"
+                    >
+                      {isDeleting ? 'Eliminando...' : 'Eliminar Definitivamente'}
+                    </Button>
+                  </Modal>
                 </div>
               </div>
             </div>
