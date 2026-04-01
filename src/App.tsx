@@ -11,6 +11,8 @@ import {
   signOut, 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  deleteUser,
+  updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
 import { 
@@ -272,6 +274,7 @@ export default function App() {
   const [birthDate, setBirthDate] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [photoURL, setPhotoURL] = useState('');
+  const [imageOption, setImageOption] = useState<'url' | 'file'>('url');
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
@@ -391,6 +394,17 @@ export default function App() {
               isAdmin: u.email ? ADMIN_EMAILS.includes(u.email) : false
             };
             await setDoc(docRef, newProfile);
+            
+            // Sync Auth profile
+            try {
+              await updateProfile(u, {
+                displayName: newProfile.displayName,
+                photoURL: newProfile.photoURL
+              });
+            } catch (authUpdateErr) {
+              console.error("Error updating auth profile:", authUpdateErr);
+            }
+
             setProfile(newProfile);
           }
         } catch (err) {
@@ -539,6 +553,21 @@ export default function App() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 800000) {
+        setError("La imagen es demasiado grande. Por favor elige una de menos de 800KB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoURL(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleLogin = async () => {
     setAuthError(null);
@@ -938,7 +967,7 @@ export default function App() {
 
   const resetDatabase = async () => {
     if (!profile?.isAdmin) return;
-    if (!window.confirm("¿ESTÁS SEGURO? Esto eliminará TODOS los usuarios, trabajos, ofertas y mensajes (excepto tu cuenta admin). Esta acción no se puede deshacer.")) return;
+    if (!window.confirm("¿ESTÁS SEGURO? Esto eliminará TODOS los perfiles, trabajos, ofertas y mensajes de la base de datos (Firestore).\n\nIMPORTANTE: Los usuarios de autenticación (emails/logins) NO se pueden borrar automáticamente desde aquí por seguridad de Firebase. Deberás borrarlos manualmente en la Consola de Firebase para que puedan volver a registrarse con el mismo email.")) return;
 
     setIsResetting(true);
     try {
@@ -966,13 +995,41 @@ export default function App() {
         }
       }
       
-      setError("Base de datos reseteada con éxito.");
+      setError("Base de datos (Firestore) reseteada con éxito. Recuerda borrar los usuarios en la Consola de Firebase.");
       setView('home');
     } catch (err) {
       console.error("Error resetting database:", err);
       setError("Error al resetear la base de datos.");
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const deleteMyAccount = async () => {
+    if (!user) return;
+    if (!window.confirm("¿Estás seguro de que quieres eliminar tu cuenta? Esta acción es irreversible y borrará tu perfil y tu acceso.")) return;
+
+    setIsDeleting(true);
+    try {
+      // 1. Delete Firestore profile
+      await deleteDoc(doc(db, 'users', user.uid));
+      
+      // 2. Delete Auth account
+      await deleteUser(user);
+      
+      setUser(null);
+      setProfile(null);
+      setView('home');
+      setError("Tu cuenta ha sido eliminada con éxito.");
+    } catch (err: any) {
+      console.error("Error deleting account:", err);
+      if (err.code === 'auth/requires-recent-login') {
+        setError("Por seguridad, debes haber iniciado sesión recientemente para eliminar tu cuenta. Por favor, cierra sesión y vuelve a entrar.");
+      } else {
+        setError("Error al eliminar la cuenta. Inténtalo de nuevo.");
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1056,15 +1113,66 @@ export default function App() {
             )}
 
             {isSignUp && (
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
-                <Input 
-                  type="url"
-                  value={photoURL} 
-                  onChange={(e) => setPhotoURL(e.target.value)} 
-                  placeholder="https://..." 
-                  required 
-                />
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 mb-2">
+                  <button 
+                    type="button"
+                    onClick={() => { setImageOption('url'); setPhotoURL(''); }}
+                    className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'url' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+                  >
+                    URL de Imagen
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => { setImageOption('file'); setPhotoURL(''); }}
+                    className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'file' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+                  >
+                    Subir Archivo
+                  </button>
+                </div>
+
+                {imageOption === 'url' ? (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
+                    <Input 
+                      type="url"
+                      value={photoURL} 
+                      onChange={(e) => setPhotoURL(e.target.value)} 
+                      placeholder="https://..." 
+                      required 
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Adjuntar Foto Perfil</label>
+                    <div className="relative">
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileChange}
+                        className="hidden" 
+                        id="profile-upload"
+                        required={!photoURL}
+                      />
+                      <label 
+                        htmlFor="profile-upload" 
+                        className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                      >
+                        {photoURL ? (
+                          <div className="flex items-center gap-2">
+                            <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
+                            <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-zinc-400">
+                            <Plus className="w-4 h-4" />
+                            <span className="text-xs font-bold uppercase tracking-widest">Seleccionar Imagen</span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1154,7 +1262,7 @@ export default function App() {
             className="w-8 h-8 lg:w-12 lg:h-12 rounded-lg lg:rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
             onClick={() => setView('profile')}
           >
-            <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+            <img src={profile?.photoURL || user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
           </div>
         </div>
       </header>
@@ -1833,7 +1941,7 @@ export default function App() {
                 <div className="flex flex-col items-center text-center mb-12">
                   <div className="relative group">
                     <div className="w-32 h-32 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl mb-6 group-hover:scale-105 transition-transform duration-500">
-                      <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+                      <img src={profile?.photoURL || user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
                     </div>
                     <div className="absolute -bottom-2 -right-2 bg-primary text-white p-2 rounded-xl shadow-lg border-2 border-white">
                       <Camera className="w-4 h-4" />
@@ -1932,25 +2040,47 @@ export default function App() {
                     Editar Perfil
                   </Button>
 
-                  <Button 
-                    variant="ghost" 
-                    onClick={generateTestData}
-                    disabled={isDeleting || isResetting}
-                    className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-primary hover:bg-primary/5 border border-dashed border-primary/30"
-                  >
-                    {isDeleting ? 'Generando...' : 'Generar Demandas de Prueba'}
-                  </Button>
-
                   {profile?.isAdmin && (
                     <Button 
                       variant="ghost" 
-                      onClick={resetDatabase}
-                      disabled={isResetting || isDeleting}
-                      className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-destructive hover:bg-destructive/5 border border-dashed border-destructive/30 mt-4"
+                      onClick={generateTestData}
+                      disabled={isDeleting || isResetting}
+                      className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-primary hover:bg-primary/5 border border-dashed border-primary/30"
                     >
-                      {isResetting ? 'Reseteando...' : 'Resetear Base de Datos'}
+                      {isDeleting ? 'Generando...' : 'Generar Demandas de Prueba'}
                     </Button>
                   )}
+
+                  {profile?.isAdmin && (
+                    <div className="space-y-4 mt-4">
+                      <Button 
+                        variant="ghost" 
+                        onClick={resetDatabase}
+                        disabled={isResetting || isDeleting}
+                        className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-destructive hover:bg-destructive/5 border border-dashed border-destructive/30"
+                      >
+                        {isResetting ? 'Reseteando...' : 'Resetear Base de Datos'}
+                      </Button>
+                      
+                      <a 
+                        href="https://console.firebase.google.com/project/gen-lang-client-0333997530/authentication/users"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center text-[10px] font-bold text-stone-400 uppercase tracking-widest hover:text-primary transition-colors"
+                      >
+                        Ir a Consola de Firebase (Auth)
+                      </a>
+                    </div>
+                  )}
+
+                  <Button 
+                    variant="ghost" 
+                    onClick={deleteMyAccount}
+                    disabled={isDeleting || isResetting}
+                    className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest text-stone-400 hover:text-destructive hover:bg-destructive/5 mt-8"
+                  >
+                    Eliminar mi cuenta
+                  </Button>
                 </div>
               </div>
             </div>
