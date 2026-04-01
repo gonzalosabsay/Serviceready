@@ -316,7 +316,18 @@ export default function App() {
           const docRef = doc(db, 'users', u.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile;
+            const shouldBeAdmin = u.email ? ADMIN_EMAILS.includes(u.email) : false;
+            console.log("Profile sync - Email:", u.email, "shouldBeAdmin:", shouldBeAdmin, "currentIsAdmin:", data.isAdmin);
+            
+            if (shouldBeAdmin && !data.isAdmin) {
+              // Update existing profile to include isAdmin flag
+              const updatedProfile = { ...data, isAdmin: true };
+              await updateDoc(docRef, { isAdmin: true });
+              setProfile(updatedProfile);
+            } else {
+              setProfile(data);
+            }
           } else {
             const newProfile: UserProfile = {
               uid: u.uid,
