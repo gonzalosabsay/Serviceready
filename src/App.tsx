@@ -58,7 +58,8 @@ import {
   List as ListIcon,
   Trash2,
   Navigation,
-  CheckCircle
+  CheckCircle,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -254,7 +255,28 @@ export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
+  const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const categoriesRef = useRef<HTMLDivElement>(null);
+  const jobRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoriesRef.current) {
+      const scrollAmount = 200;
+      categoriesRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const scrollToJob = (jobId: string) => {
+    setHighlightedJobId(jobId);
+    const element = jobRefs.current[jobId];
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -905,7 +927,7 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="p-6 max-w-4xl mx-auto w-full"
+              className={cn("p-6 mx-auto w-full", profile?.role === 'professional' ? "max-w-7xl" : "max-w-4xl")}
             >
               <div className="flex items-center justify-between mb-8">
                 <div>
@@ -918,7 +940,7 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-3">
                   {profile?.role === 'professional' && (
-                    <div className="flex bg-white rounded-xl border border-border p-1 shadow-sm">
+                    <div className="flex lg:hidden bg-white rounded-xl border border-border p-1 shadow-sm">
                       <button 
                         onClick={() => setDisplayMode('list')}
                         aria-label="Vista de lista"
@@ -944,67 +966,71 @@ export default function App() {
               </div>
 
               {profile?.role === 'professional' && (
-                <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
-                  <button
-                    onClick={() => setSelectedCategory('Todas')}
-                    className={cn(
-                      "px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all border shadow-sm",
-                      selectedCategory === 'Todas' 
-                        ? "bg-primary text-primary-foreground border-primary" 
-                        : "bg-white border-border text-stone-600 hover:border-primary/30 hover:bg-stone-50"
-                    )}
+                <div className="relative group mb-10 -mx-4 px-4">
+                  <div 
+                    ref={categoriesRef}
+                    className="flex gap-4 overflow-x-auto py-3 px-16 no-scrollbar scroll-smooth"
                   >
-                    Todas
-                  </button>
-                  {CATEGORIES.map(cat => (
                     <button
-                      key={cat.name}
-                      onClick={() => setSelectedCategory(cat.name)}
+                      onClick={() => setSelectedCategory('Todas')}
                       className={cn(
-                        "px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all border shadow-sm whitespace-nowrap",
-                        selectedCategory === cat.name 
-                          ? "bg-primary text-primary-foreground border-primary" 
-                          : "bg-white border-border text-stone-600 hover:border-primary/30 hover:bg-stone-50"
+                        "px-8 py-3.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm shrink-0",
+                        selectedCategory === 'Todas' 
+                          ? "bg-primary text-primary-foreground border-primary shadow-xl shadow-primary/20 scale-105" 
+                          : "bg-white border-border text-stone-600 hover:border-primary/40 hover:bg-stone-50"
                       )}
                     >
-                      {cat.name}
+                      Todas
                     </button>
-                  ))}
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat.name}
+                        onClick={() => setSelectedCategory(cat.name)}
+                        className={cn(
+                          "px-8 py-3.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] transition-all border shadow-sm whitespace-nowrap shrink-0",
+                          selectedCategory === cat.name 
+                            ? "bg-primary text-primary-foreground border-primary shadow-xl shadow-primary/20 scale-105" 
+                            : "bg-white border-border text-stone-600 hover:border-primary/40 hover:bg-stone-50"
+                        )}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Navigation Arrows with Improved Aesthetics */}
+                  <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
+                  <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-stone-50 via-stone-50/90 to-transparent pointer-events-none z-10" />
+
+                  <div className="absolute top-1/2 -translate-y-1/2 left-4 z-20 opacity-0 group-hover:opacity-100 transition-all duration-500 hidden md:block">
+                    <button 
+                      onClick={() => scrollCategories('left')}
+                      className="w-14 h-14 bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-100 flex items-center justify-center text-stone-600 hover:text-primary hover:border-primary hover:scale-110 transition-all active:scale-95"
+                    >
+                      <ChevronLeft className="w-7 h-7" />
+                    </button>
+                  </div>
+                  <div className="absolute top-1/2 -translate-y-1/2 right-4 z-20 opacity-0 group-hover:opacity-100 transition-all duration-500 hidden md:block">
+                    <button 
+                      onClick={() => scrollCategories('right')}
+                      className="w-14 h-14 bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-100 flex items-center justify-center text-stone-600 hover:text-primary hover:border-primary hover:scale-110 transition-all active:scale-95"
+                    >
+                      <ChevronRight className="w-7 h-7" />
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {displayMode === 'map' && profile?.role === 'professional' ? (
-                <div className="h-[500px] w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0">
-                  <MapContainer center={[-34.6037, -58.3816]} zoom={13} style={{ height: '100%', width: '100%' }}>
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    {filteredJobs.map(job => (
-                      <Marker 
-                        key={job.id} 
-                        position={[job.location.lat, job.location.lng]}
-                        icon={job.isUrgent ? redIcon : blueIcon}
-                        eventHandlers={{
-                          click: () => {
-                            setSelectedJob(job);
-                            setView('job-details');
-                          }
-                        }}
-                      >
-                        <Popup>
-                          <div className="p-2">
-                            <h4 className="font-bold text-sm">{job.title}</h4>
-                            <p className="text-xs text-zinc-500 mb-2">{job.category}</p>
-                            <Button className="py-1 px-3 text-[10px] w-full" onClick={() => {
-                              setSelectedJob(job);
-                              setView('job-details');
-                            }}>Ver Detalles</Button>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
-                  </MapContainer>
-                </div>
-              ) : (
-                <div className="grid gap-4">
+              <div className={cn(
+                "grid gap-8",
+                profile?.role === 'professional' ? "lg:grid-cols-[1.2fr_1fr] lg:h-[calc(100vh-280px)]" : "grid-cols-1"
+              )}>
+                {/* List Column */}
+                <div className={cn(
+                  "grid gap-8",
+                  profile?.role === 'professional' && displayMode === 'map' ? "hidden lg:grid" : "grid",
+                  profile?.role === 'professional' && "lg:overflow-y-auto lg:px-8 lg:pb-12 no-scrollbar"
+                )}>
                   {filteredJobs.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">
                       <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mb-4">
@@ -1017,62 +1043,102 @@ export default function App() {
                     filteredJobs.map(job => (
                       <motion.div 
                         key={job.id}
+                        ref={el => jobRefs.current[job.id] = el}
                         whileHover={{ y: -4 }}
-                        className="bg-white p-6 rounded-[2.5rem] border border-border shadow-sm cursor-pointer card-hover group relative overflow-hidden"
+                        animate={highlightedJobId === job.id ? { scale: 1.02, borderColor: 'var(--color-primary)' } : { scale: 1, borderColor: 'var(--color-border)' }}
+                        className={cn(
+                          "bg-white py-28 px-12 rounded-2xl border shadow-lg cursor-pointer card-hover group relative overflow-hidden transition-all duration-500 flex flex-col items-center text-center justify-center min-h-[380px]",
+                          highlightedJobId === job.id ? "border-primary ring-4 ring-primary/10 bg-primary/[0.01] shadow-2xl shadow-primary/5" : "border-border"
+                        )}
                         onClick={() => {
                           setSelectedJob(job);
                           setView('job-details');
+                          setHighlightedJobId(job.id);
                         }}
                       >
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 group-hover:bg-primary/10 transition-colors" />
+                        {/* Left Orange Illumination */}
+                        {highlightedJobId === job.id && (
+                          <div className="absolute left-0 top-0 bottom-0 w-2 bg-primary shadow-[10px_0_30px_rgba(249,115,22,0.3)] z-20" />
+                        )}
                         
-                        <div className="flex justify-between items-start mb-4 relative z-10">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-2 py-0.5 text-[9px]">
-                                {job.status === 'Open' ? 'Abierto' : 'Completado'}
+                        <div className="absolute top-0 right-0 w-48 h-48 bg-primary/5 rounded-full -mr-24 -mt-24 group-hover:bg-primary/10 transition-colors" />
+                        <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/5 rounded-full -ml-16 -mb-16 group-hover:bg-primary/10 transition-colors" />
+                        
+                        <div className="flex flex-col items-center mb-8 relative z-10 w-full">
+                          <div className="flex flex-wrap justify-center items-center gap-3 mb-6">
+                            <Badge variant={job.status === 'Open' ? 'warning' : 'success'} className="px-4 py-1.5 text-[10px] font-bold">
+                              {job.status === 'Open' ? 'Abierto' : 'Completado'}
+                            </Badge>
+                            {job.isUrgent && (
+                              <Badge variant="danger" className="px-4 py-1.5 text-[10px] font-bold flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5" /> URGENTE
                               </Badge>
-                              {job.isUrgent && (
-                                <Badge variant="danger" className="px-2 py-0.5 text-[9px] flex items-center gap-1">
-                                  <Clock className="w-2.5 h-2.5" /> URGENTE
-                                </Badge>
-                              )}
-                              <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                {job.category}
-                              </span>
-                            </div>
-                            <h3 className="font-bold text-xl text-stone-900 group-hover:text-primary transition-colors leading-tight">{job.title}</h3>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-stone-400 text-[10px] font-bold uppercase tracking-wider block mb-1">
-                              {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true, locale: es })}
+                            )}
+                            <span className="text-[10px] font-black text-primary bg-primary/10 px-4 py-1.5 rounded-full uppercase tracking-[0.15em]">
+                              {job.category}
                             </span>
-                            <div className="flex items-center justify-end gap-1 text-primary">
-                              <span className="text-xs font-bold uppercase tracking-widest">Ver</span>
-                              <ChevronLeft className="w-4 h-4 rotate-180" />
-                            </div>
+                          </div>
+                          
+                          <h3 className="font-bold text-3xl text-stone-900 group-hover:text-primary transition-colors leading-tight mb-4 max-w-[90%]">{job.title}</h3>
+                          
+                          <div className="flex items-center justify-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-widest">
+                            <span>Publicado {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true, locale: es })}</span>
                           </div>
                         </div>
                         
-                        <p className="text-stone-500 line-clamp-2 mb-6 text-sm leading-relaxed relative z-10">{job.description}</p>
+                        <p className="text-stone-500 line-clamp-3 mb-10 text-lg leading-relaxed relative z-10 max-w-[85%]">{job.description}</p>
                         
-                        <div className="flex flex-wrap items-center gap-4 text-stone-400 text-[11px] font-bold uppercase tracking-wider relative z-10 border-t border-stone-50 pt-4">
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-primary/60" /> 
-                            <span className="truncate max-w-[200px]">{job.location.address}</span>
+                        <div className="flex flex-col items-center gap-6 w-full relative z-10 pt-8 border-t border-stone-100">
+                          <div className="flex items-center justify-center gap-2 text-stone-500 text-sm font-bold uppercase tracking-wider">
+                            <MapPin className="w-5 h-5 text-primary" /> 
+                            <span className="truncate max-w-[400px]">{job.location.address}</span>
                           </div>
-                          {job.isUrgent && (
-                            <div className="flex items-center gap-1.5 ml-auto text-destructive">
-                              <Clock className="w-3.5 h-3.5" /> 
-                              <span>Urgente</span>
-                            </div>
-                          )}
+                          
+                          <div className="flex items-center justify-center gap-3 text-primary group-hover:scale-110 transition-transform">
+                            <span className="text-sm font-black uppercase tracking-[0.25em]">Ver Detalles</span>
+                            <ChevronLeft className="w-6 h-6 rotate-180" />
+                          </div>
                         </div>
                       </motion.div>
                     ))
                   )}
                 </div>
-              )}
+
+                {/* Map Column */}
+                {profile?.role === 'professional' && (
+                  <div className={cn(
+                    "h-[500px] lg:h-full w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0",
+                    displayMode === 'list' ? "hidden lg:block" : "block"
+                  )}>
+                    <MapContainer center={[-34.6037, -58.3816]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      {filteredJobs.map(job => (
+                        <Marker 
+                          key={job.id} 
+                          position={[job.location.lat, job.location.lng]}
+                          icon={job.isUrgent ? redIcon : blueIcon}
+                          eventHandlers={{
+                            click: () => {
+                              scrollToJob(job.id);
+                            }
+                          }}
+                        >
+                          <Popup>
+                            <div className="p-2">
+                              <h4 className="font-bold text-sm">{job.title}</h4>
+                              <p className="text-xs text-zinc-500 mb-2">{job.category}</p>
+                              <Button className="py-1 px-3 text-[10px] w-full" onClick={() => {
+                                setSelectedJob(job);
+                                setView('job-details');
+                              }}>Ver Detalles</Button>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      ))}
+                    </MapContainer>
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
