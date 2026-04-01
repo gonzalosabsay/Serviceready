@@ -179,7 +179,7 @@ const TextArea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLText
   />
 );
 
-const Badge = ({ children, className, variant = 'default' }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' | 'danger' }) => {
+const Badge = ({ children, className, variant = 'default', ...props }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' | 'danger' } & React.HTMLAttributes<HTMLSpanElement>) => {
   const variants = {
     default: 'bg-stone-100 text-stone-600 border-stone-200',
     success: 'bg-green-50 text-green-700 border-green-200',
@@ -188,11 +188,14 @@ const Badge = ({ children, className, variant = 'default' }: { children: React.R
     danger: 'bg-red-50 text-red-700 border-red-200',
   };
   return (
-    <span className={cn(
-      'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border', 
-      variants[variant], 
-      className
-    )}>
+    <span 
+      className={cn(
+        'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border', 
+        variants[variant], 
+        className
+      )}
+      {...props}
+    >
       {children}
     </span>
   );
@@ -262,7 +265,17 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [photoURL, setPhotoURL] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showProfRegistration, setShowProfRegistration] = useState(false);
+  const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
+  const [profDescription, setProfDescription] = useState('');
+  const [profLicense, setProfLicense] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -331,12 +344,18 @@ export default function App() {
           } else {
             const newProfile: UserProfile = {
               uid: u.uid,
-              displayName: u.displayName || 'User',
+              displayName: firstName && lastName ? `${firstName} ${lastName}` : (u.displayName || 'User'),
+              firstName: firstName || (u.displayName?.split(' ')[0] || ''),
+              lastName: lastName || (u.displayName?.split(' ').slice(1).join(' ') || ''),
+              username: username || (u.email?.split('@')[0] || u.uid.slice(0, 8)),
               email: u.email || '',
-              photoURL: u.photoURL || '',
+              photoURL: photoURL || u.photoURL || '',
+              birthDate: birthDate || '',
+              phoneNumber: phoneNumber || '',
               role: 'client',
               avgRating: 0,
               numReviews: 0,
+              isProfessionalProfileComplete: false,
               isAdmin: u.email ? ADMIN_EMAILS.includes(u.email) : false
             };
             await setDoc(docRef, newProfile);
@@ -564,12 +583,52 @@ export default function App() {
 
   const toggleRole = async () => {
     if (!profile) return;
+    
+    // If switching to professional and profile is not complete, show registration
+    if (profile.role === 'client' && !profile.isProfessionalProfileComplete) {
+      setShowProfRegistration(true);
+      return;
+    }
+
     const newRole = profile.role === 'client' ? 'professional' : 'client';
     try {
-      await setDoc(doc(db, 'users', profile.uid), { ...profile, role: newRole });
+      await updateDoc(doc(db, 'users', profile.uid), { role: newRole });
       setProfile({ ...profile, role: newRole });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+    }
+  };
+
+  const completeProfessionalProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+    if (profSpecialties.length === 0) {
+      setError("Por favor selecciona al menos una categoría.");
+      return;
+    }
+    if (profDescription.length < 20) {
+      setError("La descripción debe tener al menos 20 caracteres.");
+      return;
+    }
+
+    setIsDeleting(true); // Reusing isDeleting as a generic loading state
+    try {
+      const updatedData = {
+        specialties: profSpecialties,
+        professionalDescription: profDescription,
+        licenseNumber: profLicense,
+        isProfessionalProfileComplete: true,
+        role: 'professional' as const
+      };
+      await updateDoc(doc(db, 'users', profile.uid), updatedData);
+      setProfile({ ...profile, ...updatedData });
+      setShowProfRegistration(false);
+      setView('home');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+      setError("No se pudo completar el perfil. Intenta de nuevo.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -795,11 +854,17 @@ export default function App() {
       const testUser: UserProfile = {
         uid: testUserId,
         displayName: "Usuario de Prueba (CABA)",
+        firstName: "Usuario",
+        lastName: "Prueba",
+        username: "testuser_" + testUserId.slice(0, 4),
         email: "test@example.com",
         photoURL: `https://picsum.photos/seed/${testUserId}/200`,
+        birthDate: "1990-01-01",
+        phoneNumber: "+54 9 11 1234-5678",
         role: 'client',
         avgRating: 5,
-        numReviews: 10
+        numReviews: 10,
+        isProfessionalProfileComplete: false
       };
 
       await setDoc(doc(db, 'users', testUserId), testUser);
@@ -859,8 +924,80 @@ export default function App() {
           <p className="text-zinc-500 mb-8 text-lg">Conecta con los mejores profesionales de oficios en tu zona.</p>
           
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-6 text-left">
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Nombre</label>
+                  <Input 
+                    value={firstName} 
+                    onChange={(e) => setFirstName(e.target.value)} 
+                    placeholder="Juan" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Apellido</label>
+                  <Input 
+                    value={lastName} 
+                    onChange={(e) => setLastName(e.target.value)} 
+                    placeholder="Pérez" 
+                    required 
+                  />
+                </div>
+              </div>
+            )}
+            
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Usuario</label>
+                  <Input 
+                    value={username} 
+                    onChange={(e) => setUsername(e.target.value)} 
+                    placeholder="juanperez" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Nacimiento</label>
+                  <Input 
+                    type="date"
+                    value={birthDate} 
+                    onChange={(e) => setBirthDate(e.target.value)} 
+                    required 
+                  />
+                </div>
+              </div>
+            )}
+
+            {isSignUp && (
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Celular</label>
+                <Input 
+                  type="tel"
+                  value={phoneNumber} 
+                  onChange={(e) => setPhoneNumber(e.target.value)} 
+                  placeholder="+54 9 11 ..." 
+                  required 
+                />
+              </div>
+            )}
+
+            {isSignUp && (
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
+                <Input 
+                  type="url"
+                  value={photoURL} 
+                  onChange={(e) => setPhotoURL(e.target.value)} 
+                  placeholder="https://..." 
+                  required 
+                />
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Email</label>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Email</label>
               <Input 
                 type="email" 
                 value={email} 
@@ -870,7 +1007,7 @@ export default function App() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 mb-1">Contraseña</label>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Contraseña</label>
               <Input 
                 type="password" 
                 value={password} 
@@ -879,8 +1016,8 @@ export default function App() {
                 required 
               />
             </div>
-            {authError && <p className="text-red-500 text-xs mt-1">{authError}</p>}
-            <Button type="submit" className="w-full py-3">
+            {authError && <p className="text-red-500 text-xs mt-1 font-bold">{authError}</p>}
+            <Button type="submit" className="w-full py-4 text-sm font-black uppercase tracking-widest shadow-lg shadow-primary/20">
               {isSignUp ? 'Crear Cuenta' : 'Iniciar Sesión'}
             </Button>
           </form>
@@ -956,41 +1093,61 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className={cn("p-6 mx-auto w-full", profile?.role === 'professional' ? "max-w-7xl" : "max-w-4xl")}
             >
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-stone-900">
-                    {profile?.role === 'client' ? 'Mis Pedidos' : 'Trabajos Disponibles'}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {profile?.role === 'client' ? 'Gestiona tus solicitudes de servicio' : 'Encuentra nuevas oportunidades de trabajo'}
+              {profile?.role === 'professional' && !profile.isProfessionalProfileComplete ? (
+                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-stone-200 shadow-sm text-center px-6">
+                  <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mb-6">
+                    <UserIcon className="w-10 h-10 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-black text-stone-900 mb-3 uppercase tracking-tight">¡Casi listo!</h3>
+                  <p className="text-stone-500 max-w-md mb-8 leading-relaxed">
+                    Para ver los trabajos disponibles y empezar a postularte, necesitamos que completes tu perfil profesional.
                   </p>
+                  <Button 
+                    onClick={() => setShowProfRegistration(true)}
+                    className="px-10 py-4 text-sm font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                  >
+                    Completar Perfil Profesional
+                  </Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  {profile?.role === 'professional' && (
-                    <div className="flex lg:hidden bg-white rounded-xl border border-border p-1 shadow-sm">
-                      <button 
-                        onClick={() => setDisplayMode('list')}
-                        aria-label="Vista de lista"
-                        className={cn('p-2 rounded-lg transition-all', displayMode === 'list' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
-                      >
-                        <ListIcon className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => setDisplayMode('map')}
-                        aria-label="Vista de mapa"
-                        className={cn('p-2 rounded-lg transition-all', displayMode === 'map' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
-                      >
-                        <MapIcon className="w-5 h-5" />
-                      </button>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-8">
+                    <div>
+                      <h2 className="text-2xl font-bold tracking-tight text-stone-900">
+                        {profile?.role === 'client' ? 'Mis Pedidos' : 'Trabajos Disponibles'}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        {profile?.role === 'client' ? 'Gestiona tus solicitudes de servicio' : 'Encuentra nuevas oportunidades de trabajo'}
+                      </p>
                     </div>
-                  )}
-                  {profile?.role === 'client' && (
-                    <Button onClick={() => setView('create-job')} className="flex items-center gap-2">
-                      <Plus className="w-5 h-5" /> Nuevo Trabajo
-                    </Button>
-                  )}
-                </div>
-              </div>
+                    <div className="flex items-center gap-3">
+                      {profile?.role === 'professional' && (
+                        <div className="flex lg:hidden bg-white rounded-xl border border-border p-1 shadow-sm">
+                          <button 
+                            onClick={() => setDisplayMode('list')}
+                            aria-label="Vista de lista"
+                            className={cn('p-2 rounded-lg transition-all', displayMode === 'list' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
+                          >
+                            <ListIcon className="w-5 h-5" />
+                          </button>
+                          <button 
+                            onClick={() => setDisplayMode('map')}
+                            aria-label="Vista de mapa"
+                            className={cn('p-2 rounded-lg transition-all', displayMode === 'map' ? 'bg-primary/10 text-primary' : 'text-stone-400 hover:text-stone-600')}
+                          >
+                            <MapIcon className="w-5 h-5" />
+                          </button>
+                        </div>
+                      )}
+                      {profile?.role === 'client' && (
+                        <Button onClick={() => setView('create-job')} className="flex items-center gap-2">
+                          <Plus className="w-5 h-5" /> Nuevo Trabajo
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {profile?.role === 'professional' && (
                 <div className="relative group mb-6 lg:mb-10 -mx-4 px-4">
@@ -1388,7 +1545,23 @@ export default function App() {
                 <div className="space-y-6">
                   {profile?.role === 'professional' && (
                     <>
-                      {myBids.some(b => b.jobId === selectedJob.id) || (selectedBid && selectedBid.jobId === selectedJob.id) ? (
+                      {!profile.isProfessionalProfileComplete ? (
+                        <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl text-center">
+                          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <UserIcon className="w-6 h-6 text-primary" />
+                          </div>
+                          <h3 className="font-bold text-lg mb-2">Perfil Incompleto</h3>
+                          <p className="text-stone-500 text-sm mb-6 leading-relaxed">
+                            Debes completar tu perfil profesional para poder enviar presupuestos.
+                          </p>
+                          <Button 
+                            onClick={() => setShowProfRegistration(true)}
+                            className="w-full py-3 text-xs font-black uppercase tracking-widest"
+                          >
+                            Completar Perfil
+                          </Button>
+                        </div>
+                      ) : myBids.some(b => b.jobId === selectedJob.id) || (selectedBid && selectedBid.jobId === selectedJob.id) ? (
                         <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200 text-center">
                           <CheckCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
                           <h3 className="font-bold text-lg mb-2 text-orange-900">Ya te postulaste</h3>
@@ -1591,6 +1764,7 @@ export default function App() {
                     </div>
                   </div>
                   <h3 className="text-3xl font-black text-stone-900 mb-1">{profile?.displayName}</h3>
+                  <p className="text-stone-400 text-xs font-bold uppercase tracking-[0.2em] mb-1">@{profile?.username}</p>
                   <p className="text-stone-500 text-sm font-medium mb-6">{profile?.email}</p>
                   
                   <div className="flex items-center gap-6">
@@ -1604,14 +1778,58 @@ export default function App() {
                     <div className="w-px h-10 bg-border" />
                     <div className="flex flex-col items-center">
                       <div className="bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20">
-                        <span className="font-black text-primary text-lg">24</span>
+                        <span className="font-black text-primary text-lg">{profile?.numReviews || 0}</span>
                       </div>
-                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Trabajos</span>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Reseñas</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
+                  <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
+                    <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Información Personal</h4>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-stone-500">Nombre completo</span>
+                        <span className="text-sm font-bold text-stone-700">{profile?.firstName} {profile?.lastName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-stone-500">Celular</span>
+                        <span className="text-sm font-bold text-stone-700">{profile?.phoneNumber}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-stone-500">Nacimiento</span>
+                        <span className="text-sm font-bold text-stone-700">{profile?.birthDate}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {profile?.role === 'professional' && (
+                    <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
+                      <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Perfil Profesional</h4>
+                      <div className="space-y-4">
+                        <div>
+                          <span className="text-xs text-stone-400 uppercase font-bold tracking-widest block mb-2">Especialidades</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {profile.specialties?.map(s => (
+                              <Badge key={s} variant="info" className="text-[9px]">{s}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-xs text-stone-400 uppercase font-bold tracking-widest block mb-2">Descripción</span>
+                          <p className="text-sm text-stone-600 leading-relaxed">{profile.professionalDescription}</p>
+                        </div>
+                        {profile.licenseNumber && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-stone-500">Matrícula</span>
+                            <span className="text-sm font-bold text-stone-700">{profile.licenseNumber}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-white p-6 rounded-3xl border border-border shadow-sm">
                     <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4">Información de cuenta</h4>
                     <div className="space-y-4">
@@ -1627,10 +1845,6 @@ export default function App() {
                             Cambiar a {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
                           </Button>
                         </div>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-stone-500">Miembro desde</span>
-                        <span className="text-sm font-bold text-stone-700">Marzo 2024</span>
                       </div>
                     </div>
                   </div>
@@ -1653,6 +1867,95 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showProfRegistration && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Perfil Profesional</h2>
+                <button onClick={() => setShowProfRegistration(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                  <Plus className="w-6 h-6 text-stone-400 rotate-45" />
+                </button>
+              </div>
+              
+              <p className="text-stone-500 mb-8 text-sm leading-relaxed">
+                Para postularte a trabajos y ver las demandas, necesitamos conocer un poco más sobre tu oficio y experiencia.
+              </p>
+
+              <form onSubmit={completeProfessionalProfile} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">¿A qué oficios te dedicas?</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat.name}
+                        type="button"
+                        onClick={() => {
+                          if (profSpecialties.includes(cat.name)) {
+                            setProfSpecialties(profSpecialties.filter(s => s !== cat.name));
+                          } else {
+                            setProfSpecialties([...profSpecialties, cat.name]);
+                          }
+                        }}
+                        className={cn(
+                          "px-4 py-3 rounded-2xl text-xs font-bold transition-all border-2 text-left flex items-center justify-between",
+                          profSpecialties.includes(cat.name)
+                            ? "bg-primary/10 border-primary text-primary shadow-sm"
+                            : "bg-white border-stone-100 text-stone-500 hover:border-stone-200"
+                        )}
+                      >
+                        {cat.name}
+                        {profSpecialties.includes(cat.name) && <CheckCircle className="w-4 h-4" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Descripción de tu trabajo</label>
+                  <textarea
+                    value={profDescription}
+                    onChange={(e) => setProfDescription(e.target.value)}
+                    placeholder="Contanos sobre tu experiencia, herramientas que usás, años en el rubro..."
+                    className="w-full px-5 py-4 rounded-2xl border-2 border-stone-100 focus:border-primary focus:ring-0 transition-all text-stone-700 placeholder:text-stone-300 min-h-[120px] text-sm resize-none"
+                    required
+                  />
+                  <p className="text-[10px] text-stone-400 mt-2 font-medium">Mínimo 20 caracteres.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Número de Matrícula (Opcional)</label>
+                  <Input
+                    value={profLicense}
+                    onChange={(e) => setProfLicense(e.target.value)}
+                    placeholder="Ej: MAT-123456"
+                  />
+                </div>
+
+                <div className="pt-4">
+                  <Button 
+                    type="submit" 
+                    disabled={isDeleting}
+                    className="w-full py-4 text-sm font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                  >
+                    {isDeleting ? 'Guardando...' : 'Completar Registro Profesional'}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -3,12 +3,20 @@ export type UserRole = 'client' | 'professional';
 export interface UserProfile {
   uid: string;
   displayName: string;
+  firstName: string;
+  lastName: string;
+  username: string;
   email: string;
   photoURL?: string;
+  birthDate: string;
+  phoneNumber: string;
   role: UserRole;
   avgRating?: number;
   numReviews?: number;
   specialties?: string[];
+  professionalDescription?: string;
+  licenseNumber?: string;
+  isProfessionalProfileComplete?: boolean;
   isAdmin?: boolean;
 }
 

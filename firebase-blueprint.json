@@ -7,14 +7,23 @@
       "properties": {
         "uid": { "type": "string" },
         "displayName": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "username": { "type": "string" },
         "email": { "type": "string" },
         "photoURL": { "type": "string" },
+        "birthDate": { "type": "string", "format": "date" },
+        "phoneNumber": { "type": "string" },
         "role": { "type": "string", "enum": ["client", "professional"] },
         "avgRating": { "type": "number" },
         "numReviews": { "type": "number" },
-        "specialties": { "type": "array", "items": { "type": "string" } }
+        "specialties": { "type": "array", "items": { "type": "string" } },
+        "professionalDescription": { "type": "string" },
+        "licenseNumber": { "type": "string" },
+        "isProfessionalProfileComplete": { "type": "boolean" },
+        "isAdmin": { "type": "boolean" }
       },
-      "required": ["uid", "displayName", "role"]
+      "required": ["uid", "displayName", "firstName", "lastName", "username", "email", "birthDate", "phoneNumber", "role"]
     },
     "Job": {
       "title": "Job",
