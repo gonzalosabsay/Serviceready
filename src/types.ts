@@ -9,6 +9,7 @@ export interface UserProfile {
   avgRating?: number;
   numReviews?: number;
   specialties?: string[];
+  isAdmin?: boolean;
 }
 
 export type JobStatus = 'Open' | 'Assigned' | 'Completed';

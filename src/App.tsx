@@ -220,6 +220,7 @@ const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean
 // --- Main App ---
 
 const BUENOS_AIRES_CENTER: [number, number] = [-34.6037, -58.3816];
+const ADMIN_EMAILS = ['gonzalo.sabsay@gmail.com'];
 
 const redIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
@@ -324,7 +325,8 @@ export default function App() {
               photoURL: u.photoURL || '',
               role: 'client',
               avgRating: 0,
-              numReviews: 0
+              numReviews: 0,
+              isAdmin: u.email ? ADMIN_EMAILS.includes(u.email) : false
             };
             await setDoc(docRef, newProfile);
             setProfile(newProfile);
@@ -908,10 +910,12 @@ export default function App() {
         <div className="flex items-center gap-1.5 md:gap-4">
           <div className="flex flex-col items-end mr-0.5 md:mr-2">
             <div className="hidden sm:flex items-center gap-2">
+              {profile?.isAdmin && <Badge variant="danger" className="text-[8px] px-1.5 py-0">Admin</Badge>}
               <span className="text-[11px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
               <span className="text-[11px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
-            <div className="sm:hidden">
+            <div className="sm:hidden flex items-center gap-1">
+              {profile?.isAdmin && <Badge variant="danger" className="text-[6px] px-1 py-0">Admin</Badge>}
               <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-0.5 block">{profile?.role === 'client' ? 'Cliente' : 'Profesional'}</span>
             </div>
             <Button 
@@ -1318,7 +1322,7 @@ export default function App() {
                   <ChevronLeft className="w-6 h-6" />
                 </Button>
                 <h2 className="text-2xl font-bold">Detalles</h2>
-                {profile?.role === 'client' && selectedJob.clientId === profile.uid && (
+                {(profile?.isAdmin || (profile?.role === 'client' && selectedJob.clientId === profile.uid)) && (
                   <Button 
                     variant="danger" 
                     onClick={() => setShowDeleteConfirm(true)} 
@@ -1326,7 +1330,7 @@ export default function App() {
                     className="ml-auto flex items-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Eliminar Pedido
+                    Eliminar Pedido {profile?.isAdmin && '(Admin)'}
                   </Button>
                 )}
               </div>
