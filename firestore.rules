@@ -83,6 +83,7 @@ service cloud.firestore {
     function isValidBid(data) {
       return hasRequiredFields(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
              data.jobId is string && data.clientId is string && data.professionalId is string && data.proposedPrice is number && data.proposedPrice > 0 &&
+             data.professionalId != data.clientId &&
              (!('message' in data) || data.message is string) &&
              (!('lastMessage' in data) || data.lastMessage is string) &&
              (!('lastMessageAt' in data) || data.lastMessageAt is string);

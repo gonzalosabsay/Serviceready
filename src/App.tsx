@@ -62,7 +62,9 @@ import {
   Trash2,
   Navigation,
   CheckCircle,
-  ChevronRight
+  ChevronRight,
+  Phone,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
@@ -172,15 +174,31 @@ const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputEleme
   />
 );
 
-const TextArea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-  <textarea 
-    className={cn(
-      'flex min-h-[80px] w-full px-4 py-3 rounded-xl border border-input bg-white text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all resize-none', 
-      className
-    )} 
-    {...props} 
-  />
-);
+const TextArea = ({ className, maxLength, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => {
+  const [count, setCount] = React.useState(String(props.value || props.defaultValue || '').length);
+  
+  return (
+    <div className="relative w-full">
+      <textarea 
+        className={cn(
+          'flex min-h-[80px] w-full px-4 py-3 rounded-xl border border-input bg-white text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all resize-none', 
+          className
+        )} 
+        maxLength={maxLength}
+        onChange={(e) => {
+          setCount(e.target.value.length);
+          if (props.onChange) props.onChange(e);
+        }}
+        {...props} 
+      />
+      {maxLength && (
+        <div className="absolute bottom-2 right-3 text-[10px] font-bold text-stone-400 bg-white/80 px-1 rounded">
+          {count}/{maxLength}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Badge = ({ children, className, variant = 'default', ...props }: { children: React.ReactNode, className?: string, variant?: 'default' | 'success' | 'warning' | 'info' | 'danger' } & React.HTMLAttributes<HTMLSpanElement>) => {
   const variants = {
@@ -216,10 +234,111 @@ const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean
         <h3 className="text-xl font-bold mb-4">{title}</h3>
         {children}
         <div className="mt-6 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose} disabled={disabled}>Cancelar</Button>
+          <Button variant="ghost" onClick={onClose} disabled={disabled}>Cerrar</Button>
         </div>
       </motion.div>
     </div>
+  );
+};
+
+const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile | null, isOpen: boolean, onClose: () => void }) => {
+  if (!isOpen || !profile) return null;
+
+  return (
+    <div className="fixed inset-0 z-[3000] flex justify-center items-start p-4 bg-black/60 backdrop-blur-md overflow-y-auto py-12">
+      <motion.div 
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+        className="w-full max-w-lg shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] overflow-hidden relative flex flex-col max-h-none h-fit rounded-[3rem]"
+      >
+        <Button 
+          variant="ghost" 
+          onClick={onClose}
+          className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white flex items-center justify-center p-0 shadow-md z-[50]"
+        >
+          <X className="w-5 h-5 text-stone-600" />
+        </Button>
+
+        <div className="h-32 bg-[#f3e8e2] flex-shrink-0 relative z-10">
+        </div>
+
+        <div className="flex-1 bg-white relative z-20">
+          <div className="px-8 pb-8 -mt-16 relative">
+          <div className="w-32 h-32 rounded-[2rem] border-4 border-white overflow-hidden shadow-xl mb-6 bg-stone-200">
+            {profile.photoURL ? (
+              <img src={profile.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-stone-100 text-stone-400">
+                <UserIcon className="w-12 h-12" />
+              </div>
+            )}
+          </div>
+
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-1">
+              <h2 className="text-3xl font-black text-stone-900">{profile.displayName}</h2>
+              <Badge variant={profile.role === 'professional' ? 'success' : 'info'} className="text-[10px] uppercase tracking-widest font-black">
+                {profile.role === 'professional' ? 'Profesional' : 'Cliente'}
+              </Badge>
+            </div>
+            <p className="text-stone-400 font-bold text-sm">@{profile.username}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100">
+              <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1">Miembro desde</span>
+              <p className="text-sm font-bold text-stone-700">Recientemente</p>
+            </div>
+            {profile.role === 'professional' && (
+              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Calificación</span>
+                <div className="flex items-center gap-1">
+                  <Star className="w-4 h-4 text-primary fill-primary" />
+                  <p className="text-sm font-bold text-primary">{profile.avgRating?.toFixed(1) || 'N/A'}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {profile.role === 'professional' && profile.specialties && profile.specialties.length > 0 && (
+            <div className="mb-8">
+              <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">Especialidades</h4>
+              <div className="flex flex-wrap gap-2">
+                {profile.specialties.map(s => (
+                  <Badge key={s} variant="default" className="bg-stone-100 border-stone-200 text-stone-600 font-bold px-3 py-1">
+                    {s}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile.role === 'professional' && profile.professionalDescription && (
+            <div className="mb-8">
+              <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">Sobre mí</h4>
+              <p className="text-sm text-stone-600 leading-relaxed bg-stone-50 p-5 rounded-2xl border border-stone-100">
+                {profile.professionalDescription}
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">Información de contacto</h4>
+            <div className="flex items-center gap-4 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
+                <Phone className="w-5 h-5 text-stone-400" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest block">Teléfono</span>
+                <p className="text-sm font-bold text-stone-700">{profile.phoneNumber || 'No disponible'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  </div>
   );
 };
 
@@ -282,6 +401,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
   const [profDescription, setProfDescription] = useState('');
   const [profLicense, setProfLicense] = useState('');
@@ -846,6 +966,11 @@ export default function App() {
   const submitBid = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!profile || !selectedJob) return;
+    
+    if (selectedJob.clientId === profile.uid) {
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
     const newBid = {
       jobId: selectedJob.id,
@@ -1459,41 +1584,44 @@ export default function App() {
 
   return (
     <div className="h-screen w-full bg-zinc-50 flex flex-col overflow-hidden font-sans text-zinc-900">
-      <header className="glass sticky top-0 z-[1001] px-2 py-2 lg:px-6 lg:py-4 flex items-center justify-between border-b border-border">
-        <div className="flex items-center gap-1.5 lg:gap-3 cursor-pointer group" onClick={() => setView('home')}>
-          <div className="w-8 h-8 lg:w-12 lg:h-12 bg-primary rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
-            <Briefcase className="w-4.5 h-4.5 lg:w-7 lg:h-7 text-white" />
+      <header className="glass sticky top-0 z-[1001] px-3 py-2 lg:px-10 lg:py-6 flex items-center justify-between border-b border-border">
+        <div className="flex items-center gap-2 lg:gap-4 cursor-pointer group shrink-0" onClick={() => setView('home')}>
+          <div className="w-9 h-9 lg:w-16 lg:h-16 bg-primary rounded-xl lg:rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
+            <Briefcase className="w-4.5 h-4.5 lg:w-9 lg:h-9 text-white" />
           </div>
-          <h1 className="text-base lg:text-2xl font-bold tracking-tight text-stone-900">ServiceReady</h1>
+          <h1 className="text-lg lg:text-3xl font-black tracking-tight text-stone-900">ServiceReady</h1>
         </div>
-        <div className="flex items-center gap-1.5 md:gap-4">
-          <div className="flex flex-col items-end mr-0.5 md:mr-2">
-            <div className="hidden sm:flex items-center gap-2">
-              {profile?.isAdmin && <Badge variant="danger" className="text-[8px] px-1.5 py-0">Admin</Badge>}
-              <span className="text-[11px] uppercase tracking-widest text-stone-400 font-bold">Estás como</span>
-              <span className="text-[11px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded-md">
-                {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : 'Cargando...'}
-              </span>
+        <div className="flex items-center gap-2 lg:gap-8 min-w-0">
+          <div className="flex items-center gap-2 lg:gap-6 bg-stone-100/50 p-1.5 lg:p-3 rounded-2xl border border-stone-200/60 min-w-0">
+            <div className="flex flex-col items-end px-1 lg:px-2 min-w-0">
+              <div className="hidden sm:flex items-center gap-3 mb-1">
+                {profile?.isAdmin && <Badge variant="danger" className="text-[9px] px-2 py-0.5 shadow-sm">Admin</Badge>}
+                <span className="text-[10px] lg:text-[12px] uppercase tracking-wider text-stone-400 font-black">Modo</span>
+                <span className="text-[11px] lg:text-[13px] font-black text-primary uppercase bg-white px-3 py-1 rounded-lg shadow-sm border border-primary/10">
+                  {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : 'Cargando...'}
+                </span>
+              </div>
+              <div className="sm:hidden flex items-center gap-1.5 mb-1">
+                {profile?.isAdmin && <Badge variant="danger" className="text-[7px] px-1 py-0">Admin</Badge>}
+                <span className="text-[9px] font-black text-primary uppercase bg-white px-1.5 py-0.5 rounded-md shadow-sm border border-primary/10 whitespace-nowrap">
+                  {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : '...'}
+                </span>
+              </div>
+              <Button 
+                variant="ghost" 
+                onClick={toggleRole} 
+                className="text-[9px] lg:text-[11px] uppercase tracking-widest font-black h-6 lg:h-8 px-2 lg:px-3 rounded-lg text-stone-500 hover:text-primary hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-stone-200"
+              >
+                <span className="hidden sm:inline">Cambiar a {profile ? (profile.role === 'client' ? 'Profesional' : 'Cliente') : '...'}</span>
+                <span className="sm:hidden inline">Cambiar</span>
+              </Button>
             </div>
-            <div className="sm:hidden flex items-center gap-1">
-              {profile?.isAdmin && <Badge variant="danger" className="text-[6px] px-1 py-0">Admin</Badge>}
-              <span className="text-[8px] font-black text-primary uppercase bg-primary/10 px-1.5 py-0.5 rounded-md mb-0.5 block">
-                {profile ? (profile.role === 'client' ? 'Cliente' : 'Profesional') : '...'}
-              </span>
-            </div>
-            <Button 
-              variant="ghost" 
-              onClick={toggleRole} 
-              className="text-[7px] sm:text-[10px] uppercase tracking-widest font-black py-0 h-auto text-stone-500 hover:text-primary p-0"
+            <div 
+              className="w-9 h-9 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl overflow-hidden border-2 border-white cursor-pointer hover:border-primary transition-all shadow-md active:scale-95 flex-shrink-0"
+              onClick={() => setView('profile')}
             >
-              Cambiar a {profile ? (profile.role === 'client' ? 'Profesional' : 'Cliente') : '...'}
-            </Button>
-          </div>
-          <div 
-            className="w-8 h-8 lg:w-12 lg:h-12 rounded-lg lg:rounded-xl overflow-hidden border border-border cursor-pointer hover:border-primary transition-all shadow-sm active:scale-95"
-            onClick={() => setView('profile')}
-          >
-            <img src={profile?.photoURL || user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+              <img src={profile?.photoURL || user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+            </div>
           </div>
         </div>
       </header>
@@ -1800,7 +1928,7 @@ export default function App() {
 
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
-                      <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" />
+                      <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" maxLength={500} />
                     </div>
 
                     <div className="flex items-center gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
@@ -1949,7 +2077,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {profile?.role === 'client' && selectedJob.clientId === profile.uid && (
+                  {selectedJob.clientId === profile?.uid && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold">Postulaciones</h3>
                       <BidsList jobId={selectedJob.id} onSelectBid={openChat} />
@@ -1958,7 +2086,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-6">
-                  {profile?.role === 'professional' && (
+                  {profile?.role === 'professional' && selectedJob.clientId !== profile.uid && (
                     <>
                       {!profile.isProfessionalProfileComplete ? (
                         <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl text-center">
@@ -1996,12 +2124,17 @@ export default function App() {
                           <h3 className="font-bold text-lg mb-4">Enviar Presupuesto (Postulación)</h3>
                           <form onSubmit={submitBid} className="space-y-4">
                             <Input name="price" type="number" placeholder="Precio Estimado ($)" required />
-                            <TextArea name="message" placeholder="Mensaje de postulación..." rows={3} required />
+                            <TextArea name="message" placeholder="Mensaje de postulación..." rows={3} required maxLength={500} />
                             <Button type="submit" className="w-full">Enviar Postulación</Button>
                           </form>
                         </div>
                       )}
                     </>
+                  )}
+                  {profile?.role === 'professional' && selectedJob.clientId === profile.uid && (
+                    <div className="bg-blue-50 p-6 rounded-3xl border border-blue-200">
+                      <p className="text-blue-800 text-sm font-medium">Este es tu propio trabajo. Podés ver las postulaciones que recibiste a la izquierda.</p>
+                    </div>
                   )}
                   {profile?.role === 'client' && selectedJob.clientId !== profile.uid && (
                     <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200">
@@ -2072,11 +2205,14 @@ export default function App() {
                     <ChevronLeft className="w-6 h-6 text-stone-600" />
                   </Button>
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl overflow-hidden border border-border flex-shrink-0">
-                      <img src={selectedBid.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+                    <div 
+                      className="w-10 h-10 rounded-xl overflow-hidden border border-border flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setViewingProfile(selectedBid.otherUser || null)}
+                    >
+                      <img src={selectedBid.otherUser?.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-bold text-stone-900 truncate">{selectedBid.otherUser?.displayName}</h3>
+                    <div className="min-w-0 cursor-pointer" onClick={() => setViewingProfile(selectedBid.otherUser || null)}>
+                      <h3 className="font-bold text-stone-900 truncate hover:text-primary transition-colors">{selectedBid.otherUser?.displayName}</h3>
                       <p className="text-[10px] font-bold text-primary uppercase tracking-widest">${selectedBid.proposedPrice}</p>
                     </div>
                   </div>
@@ -2413,12 +2549,13 @@ export default function App() {
 
                 <div>
                   <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Descripción de tu trabajo</label>
-                  <textarea
+                  <TextArea
                     value={profDescription}
                     onChange={(e) => setProfDescription(e.target.value)}
                     placeholder="Contanos sobre tu experiencia, herramientas que usás, años en el rubro..."
-                    className="w-full px-5 py-4 rounded-2xl border-2 border-stone-100 focus:border-primary focus:ring-0 transition-all text-stone-700 placeholder:text-stone-300 min-h-[120px] text-sm resize-none"
+                    className="min-h-[120px]"
                     required
+                    maxLength={500}
                   />
                   <p className="text-[10px] text-stone-400 mt-2 font-medium">Mínimo 20 caracteres.</p>
                 </div>
@@ -2554,11 +2691,12 @@ export default function App() {
 
                       <div className="mb-6">
                         <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Descripción Profesional</label>
-                        <textarea
+                        <TextArea
                           value={profDescription}
                           onChange={(e) => setProfDescription(e.target.value)}
-                          className="w-full px-6 py-4 rounded-2xl bg-stone-50 border-2 border-stone-100 focus:border-primary focus:bg-white transition-all outline-none text-sm min-h-[100px] resize-none"
+                          className="min-h-[100px]"
                           required
+                          maxLength={500}
                         />
                       </div>
 
@@ -2586,6 +2724,17 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {viewingProfile && (
+          <UserProfileModal 
+            profile={viewingProfile} 
+            isOpen={!!viewingProfile} 
+            onClose={() => setViewingProfile(null)} 
+          />
+        )}
+      </AnimatePresence>
+
       {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[3000] shadow-xl">{error}</div>}
     </div>
   );
