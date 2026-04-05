@@ -924,15 +924,33 @@ export default function App() {
 
   const handleGetCurrentLocation = () => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
+      navigator.geolocation.getCurrentPosition(async (position) => {
         const { latitude, longitude } = position.coords;
         setTempLocation({ lat: latitude, lng: longitude });
         setMapCenter([latitude, longitude]);
+        
+        // Try to get address automatically
+        try {
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          if (data.display_name) {
+            setSearchQuery(data.display_name);
+          }
+        } catch (err) {
+          console.error('Reverse geocoding error:', err);
+        }
       }, (error) => {
         console.error('Geolocation error:', error);
       });
     }
   };
+
+  // Auto-location for job creation
+  useEffect(() => {
+    if (view === 'create-job') {
+      handleGetCurrentLocation();
+    }
+  }, [view]);
 
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1836,8 +1854,11 @@ export default function App() {
                     "h-[500px] lg:h-full w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0",
                     displayMode === 'list' ? "hidden lg:block" : "block"
                   )}>
-                    <MapContainer center={BUENOS_AIRES_CENTER} zoom={13} style={{ height: '100%', width: '100%' }}>
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <MapContainer center={BUENOS_AIRES_CENTER} zoom={10} style={{ height: '100%', width: '100%' }}>
+                      <TileLayer 
+                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" 
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                      />
                       <MapController center={BUENOS_AIRES_CENTER} displayMode={displayMode} />
                       {filteredJobs.map(job => (
                         <Marker 
@@ -1917,13 +1938,6 @@ export default function App() {
                           ))}
                         </select>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Presupuesto estimado</label>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 font-bold">$</span>
-                          <Input name="budget" type="number" placeholder="Opcional" className="pl-8" />
-                        </div>
-                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -1945,11 +1959,11 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio</label>
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio (dirección o barrio)</label>
                       <div className="relative">
                         <Input 
                           name="address" 
-                          placeholder="Ingresa la dirección o selecciona en el mapa" 
+                          placeholder="Ingrese dirección o barrio" 
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
@@ -1981,8 +1995,11 @@ export default function App() {
                       </div>
                       
                       <div className="h-[200px] rounded-2xl overflow-hidden border border-border shadow-inner mt-4 relative z-0">
-                        <MapContainer center={mapCenter} zoom={13} style={{ height: '100%', width: '100%' }}>
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
+                          <TileLayer 
+                            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" 
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                          />
                           <LocationPicker onLocationSelect={(lat, lng) => setTempLocation({ lat, lng })} />
                           <MapController center={mapCenter} />
                           {tempLocation && (
