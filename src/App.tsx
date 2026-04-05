@@ -748,9 +748,27 @@ export default function App() {
     }
   };
 
-  const openChat = async (bid: Bid) => {
+  const openChat = async (bid: any) => {
     // If job details are missing, fetch them
     let enrichedBid = { ...bid };
+    
+    // Ensure otherUser is populated for the chat view
+    if (!enrichedBid.otherUser) {
+      if (enrichedBid.professional) {
+        enrichedBid.otherUser = enrichedBid.professional;
+      } else if (profile) {
+        const otherUserId = enrichedBid.professionalId === profile.uid ? enrichedBid.clientId : enrichedBid.professionalId;
+        try {
+          const userSnap = await getDoc(doc(db, 'users', otherUserId));
+          if (userSnap.exists()) {
+            enrichedBid.otherUser = { uid: userSnap.id, ...userSnap.data() } as UserProfile;
+          }
+        } catch (err) {
+          console.error('Error fetching other user for chat:', err);
+        }
+      }
+    }
+
     if (!enrichedBid.job && enrichedBid.jobId) {
       try {
         const jobSnap = await getDoc(doc(db, 'jobs', enrichedBid.jobId));
@@ -2097,7 +2115,11 @@ export default function App() {
                   {selectedJob.clientId === profile?.uid && (
                     <div className="space-y-4">
                       <h3 className="text-xl font-bold">Postulaciones</h3>
-                      <BidsList jobId={selectedJob.id} onSelectBid={openChat} />
+                      <BidsList 
+                        jobId={selectedJob.id} 
+                        onSelectBid={openChat} 
+                        onViewProfile={setViewingProfile}
+                      />
                     </div>
                   )}
                 </div>
@@ -2779,7 +2801,7 @@ function NavButton({ active, onClick, icon, label, badge }: { active: boolean, o
   );
 }
 
-function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bid) => void }) {
+function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSelectBid: (bid: Bid) => void, onViewProfile: (profile: UserProfile) => void }) {
   const [bids, setBids] = useState<(Bid & { professional?: UserProfile })[]>([]);
   const lastUpdateRef = useRef(0);
   const cacheRef = useRef<{ users: Record<string, UserProfile> }>({ users: {} });
@@ -2827,11 +2849,14 @@ function BidsList({ jobId, onSelectBid }: { jobId: string, onSelectBid: (bid: Bi
       {bids.map(bid => (
         <div key={bid.id} className="bg-white p-4 rounded-[2rem] border border-border shadow-sm flex items-center justify-between card-hover group">
           <div className="flex items-center gap-4 min-w-0">
-            <div className="w-14 h-14 rounded-2xl overflow-hidden bg-stone-100 border border-border group-hover:border-primary/30 transition-colors flex-shrink-0">
-              <img src={bid.professional?.photoURL} alt="" className="w-full h-full object-cover" />
+            <div 
+              className="w-14 h-14 rounded-2xl overflow-hidden bg-stone-100 border border-border group-hover:border-primary/30 transition-colors flex-shrink-0 cursor-pointer hover:opacity-80"
+              onClick={() => bid.professional && onViewProfile(bid.professional)}
+            >
+              <img src={bid.professional?.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
-            <div className="min-w-0">
-              <h4 className="font-bold text-stone-900 truncate">{bid.professional?.displayName}</h4>
+            <div className="min-w-0 cursor-pointer" onClick={() => bid.professional && onViewProfile(bid.professional)}>
+              <h4 className="font-bold text-stone-900 truncate group-hover:text-primary transition-colors">{bid.professional?.displayName}</h4>
               <p className="text-sm text-stone-500 truncate leading-tight">{bid.lastMessage || bid.message}</p>
               <div className="flex items-center gap-1 mt-1">
                 <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
