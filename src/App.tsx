@@ -374,6 +374,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat' | 'agenda'>('home');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [selectedBid, setSelectedBid] = useState<any | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
@@ -604,9 +605,44 @@ export default function App() {
       where(profile.role === 'client' ? 'clientId' : 'professionalId', '==', profile.uid)
     );
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const jobCache = new Map<string, Job>();
+    const userCache = new Map<string, UserProfile>();
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const appts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
-      setAppointments(appts);
+      
+      const enriched = await Promise.all(appts.map(async (appt) => {
+        let job = jobCache.get(appt.jobId);
+        if (!job) {
+          try {
+            const jobDoc = await getDoc(doc(db, 'jobs', appt.jobId));
+            if (jobDoc.exists()) {
+              job = { id: jobDoc.id, ...jobDoc.data() } as Job;
+              jobCache.set(appt.jobId, job);
+            }
+          } catch (e) {
+            console.error('Error fetching job for appointment:', e);
+          }
+        }
+
+        const otherUserId = profile.role === 'client' ? appt.professionalId : appt.clientId;
+        let otherUser = userCache.get(otherUserId);
+        if (!otherUser) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', otherUserId));
+            if (userDoc.exists()) {
+              otherUser = { uid: userDoc.id, ...userDoc.data() } as UserProfile;
+              userCache.set(otherUserId, otherUser);
+            }
+          } catch (e) {
+            console.error('Error fetching user for appointment:', e);
+          }
+        }
+
+        return { ...appt, job, otherUser };
+      }));
+
+      setAppointments(enriched);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'appointments');
     });
@@ -2088,7 +2124,11 @@ export default function App() {
             >
               <div className="flex items-center gap-4 mb-8">
                 <Button variant="ghost" onClick={() => {
-                  if (selectedBid && view === 'job-details') {
+                  if (selectedAppointment) {
+                    setView('agenda');
+                    setSelectedAppointment(null);
+                    setSelectedJob(null);
+                  } else if (selectedBid && view === 'job-details') {
                     setView('chat');
                   } else {
                     setView('home');
@@ -2154,6 +2194,47 @@ export default function App() {
                 </div>
 
                 <div className="space-y-6">
+                  {selectedAppointment?.otherUser && (
+                    <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl">
+                      <h3 className="font-bold text-lg mb-4">
+                        {profile?.role === 'client' ? 'Profesional' : 'Cliente'}
+                      </h3>
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-12 h-12 rounded-full overflow-hidden border border-stone-200">
+                          <img 
+                            src={selectedAppointment.otherUser.photoURL} 
+                            alt="" 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                          />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-stone-900">{selectedAppointment.otherUser.displayName}</h4>
+                          <p className="text-[10px] font-bold text-primary uppercase tracking-widest">
+                            {selectedAppointment.status === 'Accepted' ? 'Encuentro Confirmado' : 'Encuentro Propuesto'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-stone-500 text-xs">
+                          <Calendar className="w-3 h-3" />
+                          {format(parseISO(selectedAppointment.startTime), "d 'de' MMMM", { locale: es })}
+                        </div>
+                        <div className="flex items-center gap-2 text-stone-500 text-xs">
+                          <Clock className="w-3 h-3" />
+                          {format(parseISO(selectedAppointment.startTime), "HH:mm")} - {format(parseISO(selectedAppointment.endTime), "HH:mm")}
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => setViewingProfile(selectedAppointment.otherUser!)}
+                        className="w-full mt-4 text-[10px] font-black uppercase tracking-widest border-stone-100"
+                      >
+                        Ver Perfil
+                      </Button>
+                    </div>
+                  )}
+
                   {profile?.role === 'professional' && selectedJob.clientId !== profile.uid && (
                     <>
                       {!profile.isProfessionalProfileComplete ? (
@@ -2428,6 +2509,14 @@ export default function App() {
                 handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
               }
             }}
+            onViewJob={(job) => {
+              setSelectedJob(job);
+              // Find the appointment for this job to show other party info
+              const appt = appointments.find(a => a.jobId === job.id);
+              setSelectedAppointment(appt || null);
+              setView('job-details');
+            }}
+            onViewProfile={setViewingProfile}
           />
         )}
 
@@ -3132,7 +3221,13 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
   );
 };
 
-const AgendaView = ({ appointments, profile, onUpdateStatus }: { appointments: Appointment[], profile: UserProfile | null, onUpdateStatus: (id: string, status: AppointmentStatus) => void }) => {
+const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewProfile }: { 
+  appointments: Appointment[], 
+  profile: UserProfile | null, 
+  onUpdateStatus: (id: string, status: AppointmentStatus) => void,
+  onViewJob: (job: Job) => void,
+  onViewProfile: (profile: UserProfile) => void
+}) => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming'>('upcoming');
 
   const filteredAppointments = useMemo(() => {
@@ -3224,7 +3319,31 @@ const AgendaView = ({ appointments, profile, onUpdateStatus }: { appointments: A
                         {format(parseISO(appt.startTime), 'HH:mm')} - {format(parseISO(appt.endTime), 'HH:mm')}
                       </span>
                     </div>
-                    <h4 className="font-bold text-stone-900">Encuentro de Servicio</h4>
+                    <div className="flex flex-col gap-1">
+                      {appt.job ? (
+                        <Button 
+                          variant="ghost" 
+                          onClick={() => onViewJob(appt.job!)}
+                          className="text-stone-900 font-bold hover:text-primary p-0 h-auto justify-start"
+                        >
+                          Ver trabajo: {appt.job.title}
+                        </Button>
+                      ) : (
+                        <h4 className="font-bold text-stone-900">Encuentro de Servicio</h4>
+                      )}
+                      
+                      {appt.otherUser && (
+                        <div 
+                          className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => onViewProfile(appt.otherUser!)}
+                        >
+                          <div className="w-4 h-4 rounded-full overflow-hidden border border-stone-200">
+                            <img src={appt.otherUser.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                          <span className="text-[10px] font-bold text-stone-500">{appt.otherUser.displayName}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

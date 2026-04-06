@@ -86,6 +86,8 @@ export interface Appointment {
   status: AppointmentStatus;
   proposedBy: string;
   createdAt: string;
+  job?: Job;
+  otherUser?: UserProfile;
 }
 
 export enum OperationType {
