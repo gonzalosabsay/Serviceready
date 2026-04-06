@@ -38,6 +38,8 @@ import {
   Job, 
   Bid, 
   Message, 
+  Appointment,
+  AppointmentStatus,
   JobStatus,
   OperationType, 
   FirestoreErrorInfo 
@@ -64,10 +66,11 @@ import {
   CheckCircle,
   ChevronRight,
   Phone,
+  Calendar,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, addHours, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -369,13 +372,20 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat'>('home');
+  const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat' | 'agenda'>('home');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [selectedBid, setSelectedBid] = useState<Bid | null>(null);
+  const [selectedBid, setSelectedBid] = useState<any | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const activeAppointment = useMemo(() => {
+    return appointments.find(a => a.bidId === selectedBid?.id && (a.status === 'Proposed' || a.status === 'Accepted'));
+  }, [appointments, selectedBid]);
+
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -580,6 +590,25 @@ export default function App() {
       setMyBids(b);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'bids');
+    });
+
+    return unsubscribe;
+  }, [profile]);
+
+  // Appointments Listener
+  useEffect(() => {
+    if (!profile) return;
+    
+    const q = query(
+      collection(db, 'appointments'), 
+      where(profile.role === 'client' ? 'clientId' : 'professionalId', '==', profile.uid)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const appts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
+      setAppointments(appts);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'appointments');
     });
 
     return unsubscribe;
@@ -2256,19 +2285,82 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-                {selectedBid.job && (
+                <div className="flex items-center gap-2">
                   <Button 
                     variant="ghost" 
-                    onClick={() => {
-                      setSelectedJob(selectedBid.job || null);
-                      setView('job-details');
-                    }}
+                    onClick={() => setShowAppointmentModal(true)}
                     className="text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 px-3"
                   >
-                    Ver Trabajo
+                    Agendar
                   </Button>
-                )}
+                  {selectedBid.job && (
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => {
+                        setSelectedJob(selectedBid.job || null);
+                        setView('job-details');
+                      }}
+                      className="text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 px-3"
+                    >
+                      Ver Trabajo
+                    </Button>
+                  )}
+                </div>
               </div>
+
+              {activeAppointment && (
+                <div className="px-6 py-3 bg-primary/5 border-b border-primary/10 flex items-center justify-between z-10">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-primary" />
+                    <div>
+                      <p className="text-xs font-bold text-stone-900">
+                        Encuentro {activeAppointment.status === 'Proposed' ? 'propuesto' : 'confirmado'}
+                      </p>
+                      <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">
+                        {format(parseISO(activeAppointment.startTime), "d 'de' MMM, HH:mm", { locale: es })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeAppointment.status === 'Proposed' && activeAppointment.proposedBy !== profile?.uid && (
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={async () => {
+                            try {
+                              await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Accepted' });
+                            } catch (err) {
+                              handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
+                            }
+                          }}
+                          className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-green-600 hover:bg-green-700"
+                        >
+                          Aceptar
+                        </Button>
+                        <Button 
+                          variant="ghost"
+                          onClick={async () => {
+                            try {
+                              await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Rejected' });
+                            } catch (err) {
+                              handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
+                            }
+                          }}
+                          className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest text-red-600"
+                        >
+                          Rechazar
+                        </Button>
+                      </div>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => setView('agenda')}
+                      className="text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5"
+                    >
+                      Ver Agenda
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
                 <div className="flex justify-center mb-8">
@@ -2320,10 +2412,25 @@ export default function App() {
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border px-6 py-3 flex items-center justify-around z-[1001] pb-safe">
         <NavButton active={view === 'home'} onClick={() => setView('home')} icon={<Briefcase />} label="Trabajos" />
         <NavButton active={view === 'messages' || view === 'chat'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" badge={unreadCount} />
+        <NavButton active={view === 'agenda'} onClick={() => setView('agenda')} icon={<Calendar />} label="Agenda" />
         <NavButton active={view === 'profile'} onClick={() => setView('profile')} icon={<UserIcon />} label="Perfil" />
       </nav>
 
       <AnimatePresence>
+        {view === 'agenda' && (
+          <AgendaView 
+            appointments={appointments} 
+            profile={profile} 
+            onUpdateStatus={async (apptId, status) => {
+              try {
+                await updateDoc(doc(db, 'appointments', apptId), { status });
+              } catch (err) {
+                handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
+              }
+            }}
+          />
+        )}
+
         {view === 'profile' && (
           <motion.div 
             initial={{ opacity: 0, y: '100%' }}
@@ -2772,6 +2879,33 @@ export default function App() {
             onClose={() => setViewingProfile(null)} 
           />
         )}
+
+        {showAppointmentModal && selectedBid && profile && (
+          <AppointmentModal 
+            isOpen={showAppointmentModal}
+            onClose={() => setShowAppointmentModal(false)}
+            bid={selectedBid}
+            profile={profile}
+            existingAppointments={appointments}
+            onPropose={async (apptData) => {
+              try {
+                console.log('Proposing appointment with data:', apptData);
+                await addDoc(collection(db, 'appointments'), {
+                  ...apptData,
+                  createdAt: new Date().toISOString()
+                });
+                setShowAppointmentModal(false);
+              } catch (err) {
+                console.error('Error proposing appointment:', err);
+                if (err instanceof Error && err.message.includes('insufficient permissions')) {
+                   setError('No tienes permisos para agendar este encuentro. Verifica que seas participante del chat.');
+                } else {
+                   setError('Error al agendar el encuentro. Por favor intenta de nuevo.');
+                }
+              }
+            }}
+          />
+        )}
       </AnimatePresence>
 
       {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[3000] shadow-xl">{error}</div>}
@@ -2875,6 +3009,256 @@ function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSele
     </div>
   );
 }
+
+const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments, onPropose }: { isOpen: boolean, onClose: () => void, bid: any, profile: UserProfile, existingAppointments: Appointment[], onPropose: (appt: any) => void }) => {
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startTime, setStartTime] = useState('09:00');
+  const [duration, setDuration] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+
+  const checkConflicts = (start: Date, end: Date) => {
+    return existingAppointments.some(appt => {
+      if (appt.status === 'Rejected' || appt.status === 'Cancelled') return false;
+      const apptStart = parseISO(appt.startTime);
+      const apptEnd = parseISO(appt.endTime);
+      return (
+        (start >= apptStart && start < apptEnd) ||
+        (end > apptStart && end <= apptEnd) ||
+        (start <= apptStart && end >= apptEnd)
+      );
+    });
+  };
+
+  const handlePropose = () => {
+    const start = parseISO(`${date}T${startTime}`);
+    const end = addHours(start, duration);
+
+    if (start < new Date()) {
+      setError('No puedes agendar en el pasado.');
+      return;
+    }
+
+    if (checkConflicts(start, end)) {
+      setError('Ya tienes un compromiso en ese horario.');
+      return;
+    }
+
+    onPropose({
+      jobId: bid.jobId,
+      bidId: bid.id,
+      clientId: bid.clientId,
+      professionalId: bid.professionalId,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      status: 'Proposed',
+      proposedBy: profile.uid
+    });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[4000] flex justify-center items-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl relative"
+      >
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black text-stone-900">Agendar Encuentro</h2>
+            <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+              <X className="w-6 h-6 text-stone-400" />
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Fecha</label>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} min={format(new Date(), 'yyyy-MM-dd')} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Hora de Inicio</label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Duración (Horas)</label>
+                  <select 
+                    value={duration} 
+                    onChange={(e) => setDuration(Number(e.target.value))}
+                    className="w-full px-4 py-3 rounded-xl bg-stone-50 border border-stone-200 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  >
+                    <option value={0.5}>30 min</option>
+                    <option value={1}>1 hora</option>
+                    <option value={2}>2 horas</option>
+                    <option value={3}>3 horas</option>
+                    <option value={4}>4 horas</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-bold flex items-center gap-2">
+                <X className="w-4 h-4" />
+                {error}
+              </div>
+            )}
+
+            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-primary" />
+                </div>
+                <span className="text-xs font-bold text-stone-600">Resumen del encuentro</span>
+              </div>
+              <p className="text-sm font-bold text-stone-900">
+                {format(parseISO(`${date}T${startTime}`), "EEEE d 'de' MMMM", { locale: es })}
+              </p>
+              <p className="text-xs text-stone-500">
+                De {startTime} a {format(addHours(parseISO(`${date}T${startTime}`), duration), 'HH:mm')}
+              </p>
+            </div>
+
+            <Button onClick={handlePropose} className="w-full py-4 rounded-2xl shadow-lg shadow-primary/20">
+              Proponer Horario
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const AgendaView = ({ appointments, profile, onUpdateStatus }: { appointments: Appointment[], profile: UserProfile | null, onUpdateStatus: (id: string, status: AppointmentStatus) => void }) => {
+  const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming'>('upcoming');
+
+  const filteredAppointments = useMemo(() => {
+    let filtered = [...appointments];
+    const now = new Date();
+
+    if (filter === 'pending') {
+      filtered = filtered.filter(a => a.status === 'Proposed' && a.proposedBy !== profile?.uid);
+    } else if (filter === 'upcoming') {
+      filtered = filtered.filter(a => a.status === 'Accepted' && parseISO(a.endTime) > now);
+    }
+
+    return filtered.sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime());
+  }, [appointments, filter, profile]);
+
+  if (!profile) return null;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-4xl mx-auto px-6 py-12 pb-32"
+    >
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h2 className="text-4xl font-black text-stone-900 mb-2">Agenda</h2>
+          <p className="text-stone-500 font-medium">Gestiona tus encuentros y servicios acordados.</p>
+        </div>
+        <div className="w-16 h-16 bg-primary/10 rounded-[2rem] flex items-center justify-center">
+          <Calendar className="w-8 h-8 text-primary" />
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
+        {[
+          { id: 'upcoming', label: 'Próximos' },
+          { id: 'pending', label: 'Pendientes' },
+          { id: 'all', label: 'Todos' }
+        ].map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id as any)}
+            className={cn(
+              "px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border",
+              filter === f.id 
+                ? "bg-primary text-white border-primary shadow-lg shadow-primary/20" 
+                : "bg-white text-stone-400 border-stone-200 hover:border-stone-300"
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        {filteredAppointments.length === 0 ? (
+          <div className="text-center py-20 bg-stone-50 rounded-[3rem] border border-dashed border-stone-200">
+            <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="w-8 h-8 text-stone-300" />
+            </div>
+            <p className="text-stone-400 font-bold">No tienes encuentros para mostrar.</p>
+          </div>
+        ) : (
+          filteredAppointments.map(appt => (
+            <div key={appt.id} className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm hover:shadow-md transition-all group">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-stone-100 flex flex-col items-center justify-center border border-stone-200 group-hover:border-primary/20 transition-colors">
+                    <span className="text-[10px] font-black text-stone-400 uppercase leading-none mb-1">
+                      {format(parseISO(appt.startTime), 'MMM', { locale: es })}
+                    </span>
+                    <span className="text-lg font-black text-stone-900 leading-none">
+                      {format(parseISO(appt.startTime), 'd')}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={cn(
+                        "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border",
+                        appt.status === 'Accepted' ? "bg-green-50 text-green-600 border-green-100" :
+                        appt.status === 'Proposed' ? "bg-orange-50 text-orange-600 border-orange-100" :
+                        "bg-stone-50 text-stone-500 border-stone-100"
+                      )}>
+                        {appt.status === 'Proposed' ? 'Propuesto' : 
+                         appt.status === 'Accepted' ? 'Confirmado' : 
+                         appt.status === 'Rejected' ? 'Rechazado' : appt.status}
+                      </span>
+                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                        {format(parseISO(appt.startTime), 'HH:mm')} - {format(parseISO(appt.endTime), 'HH:mm')}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-stone-900">Encuentro de Servicio</h4>
+                  </div>
+                </div>
+              </div>
+
+              {appt.status === 'Proposed' && appt.proposedBy !== profile.uid && (
+                <div className="flex gap-2 mt-6">
+                  <Button 
+                    onClick={() => onUpdateStatus(appt.id, 'Accepted')}
+                    className="flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-green-600 hover:bg-green-700 shadow-lg shadow-green-600/20"
+                  >
+                    Aceptar
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={() => onUpdateStatus(appt.id, 'Rejected')}
+                    className="flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50"
+                  >
+                    Rechazar
+                  </Button>
+                </div>
+              )}
+
+              {appt.status === 'Proposed' && appt.proposedBy === profile.uid && (
+                <div className="mt-4 p-3 bg-stone-50 rounded-2xl border border-stone-100 text-center">
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Esperando confirmación...</p>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </motion.div>
+  );
+};
 
 function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds, isDeleting }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string>, isDeleting: boolean }) {
   const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);

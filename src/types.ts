@@ -73,6 +73,21 @@ export interface Review {
   createdAt: string;
 }
 
+export type AppointmentStatus = 'Proposed' | 'Accepted' | 'Rejected' | 'Cancelled' | 'Completed';
+
+export interface Appointment {
+  id: string;
+  jobId: string;
+  bidId: string;
+  clientId: string;
+  professionalId: string;
+  startTime: string;
+  endTime: string;
+  status: AppointmentStatus;
+  proposedBy: string;
+  createdAt: string;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

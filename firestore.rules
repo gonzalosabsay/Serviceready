@@ -35,7 +35,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
           (request.auth.token.email == "gonzalo.sabsay@gmail.com" && request.auth.token.email_verified == true));
     }
 
@@ -101,6 +101,16 @@ service cloud.firestore {
              data.stars is number && data.stars >= 1 && data.stars <= 5;
     }
 
+    function isValidAppointment(data) {
+      return hasRequiredFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
+             hasOnlyAllowedFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
+             data.jobId is string && data.bidId is string && data.clientId is string && data.professionalId is string &&
+             data.startTime is string && data.endTime is string &&
+             data.status in ['Proposed', 'Accepted', 'Rejected', 'Cancelled', 'Completed'] &&
+             data.proposedBy is string &&
+             data.clientId != data.professionalId;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -158,6 +168,13 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidReview(request.resource.data) && request.resource.data.reviewerId == request.auth.uid;
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid);
+      allow create: if isAuthenticated() && (isAdmin() || (isValidAppointment(request.resource.data) && (request.resource.data.clientId == request.auth.uid || request.resource.data.professionalId == request.auth.uid) && request.resource.data.proposedBy == request.auth.uid));
+      allow update: if isAuthenticated() && (isAdmin() || (resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid) && isValidAppointment(request.resource.data));
+      allow delete: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid);
     }
   }
 }
