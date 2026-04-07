@@ -19,6 +19,7 @@ export interface UserProfile {
   isProfessionalProfileComplete?: boolean;
   isAdmin?: boolean;
   hasSeenTutorial?: boolean;
+  hasSeenProfTutorial?: boolean;
 }
 
 export type JobStatus = 'Open' | 'Assigned' | 'Completed';

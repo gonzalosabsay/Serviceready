@@ -14,12 +14,19 @@ interface TutorialProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete: () => void;
+  role: 'client' | 'professional';
 }
 
-export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete }) => {
+export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete, role }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
-  const steps: TutorialStep[] = [
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStep(0);
+    }
+  }, [isOpen]);
+
+  const clientSteps: TutorialStep[] = [
     {
       title: "¡Bienvenido a la plataforma!",
       description: "Te ayudamos a conectar con los mejores profesionales para tus necesidades. Esta guía rápida te mostrará cómo empezar.",
@@ -46,8 +53,46 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete 
       title: "Agenda y Encuentros",
       description: "Cuando aceptes un presupuesto, podrás proponer un horario de encuentro. Todo quedará registrado en tu Agenda.",
       icon: <Calendar className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Perfil Profesional",
+      description: "Si también quieres ofrecer tus servicios, puedes cambiar a tu perfil profesional en cualquier momento usando 'Cambiar a Profesional' arriba a la derecha.",
+      targetId: "role-switch-button",
+      icon: <HelpCircle className="w-8 h-8 text-primary" />
     }
   ];
+
+  const professionalSteps: TutorialStep[] = [
+    {
+      title: "¡Bienvenido, Profesional!",
+      description: "Aquí podrás encontrar trabajos que se ajusten a tus habilidades y hacer crecer tu negocio.",
+      icon: <Layout className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Explorar Pedidos",
+      description: "En la pantalla principal verás una lista de empleos solicitados cerca de ti. Revisa los detalles para ver si te interesan.",
+      targetId: "jobs-list",
+      icon: <Layout className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Mapa de Trabajos",
+      description: "Usa el mapa para visualizar la ubicación exacta de los pedidos y planificar mejor tus traslados.",
+      targetId: "jobs-map",
+      icon: <Calendar className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Postularse a un Pedido",
+      description: "Cuando encuentres un trabajo que te guste, envía tu propuesta con un presupuesto claro y un mensaje personalizado.",
+      icon: <Plus className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "¿Qué pasa después?",
+      description: "Si al cliente le interesa tu propuesta, te contactará por chat. Podrán acordar detalles y fijar un encuentro en la Agenda.",
+      icon: <MessageSquare className="w-8 h-8 text-primary" />
+    }
+  ];
+
+  const steps = role === 'client' ? clientSteps : professionalSteps;
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {

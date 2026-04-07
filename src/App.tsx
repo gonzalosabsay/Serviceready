@@ -498,8 +498,10 @@ export default function App() {
               setProfile(updatedProfile);
             } else {
               setProfile(data);
-              // Show tutorial if first time
-              if (!data.hasSeenTutorial && data.role === 'client') {
+              // Show tutorial if first time for current role
+              if (data.role === 'client' && !data.hasSeenTutorial) {
+                setShowTutorial(true);
+              } else if (data.role === 'professional' && !data.hasSeenProfTutorial && data.isProfessionalProfileComplete) {
                 setShowTutorial(true);
               }
             }
@@ -884,12 +886,21 @@ export default function App() {
 
   const completeTutorial = async () => {
     setShowTutorial(false);
-    if (profile && !profile.hasSeenTutorial) {
+    if (!profile) return;
+
+    if (profile.role === 'client' && !profile.hasSeenTutorial) {
       try {
         await updateDoc(doc(db, 'users', profile.uid), { hasSeenTutorial: true });
         setProfile({ ...profile, hasSeenTutorial: true });
       } catch (err) {
         console.error('Error updating tutorial status:', err);
+      }
+    } else if (profile.role === 'professional' && !profile.hasSeenProfTutorial) {
+      try {
+        await updateDoc(doc(db, 'users', profile.uid), { hasSeenProfTutorial: true });
+        setProfile({ ...profile, hasSeenProfTutorial: true });
+      } catch (err) {
+        console.error('Error updating professional tutorial status:', err);
       }
     }
   };
@@ -1710,6 +1721,7 @@ export default function App() {
                 </span>
               </div>
               <Button 
+                id="role-switch-button"
                 variant="ghost" 
                 onClick={toggleRole} 
                 className="text-[9px] lg:text-[11px] uppercase tracking-widest font-black h-6 lg:h-8 px-2 lg:px-3 rounded-lg text-stone-500 hover:text-primary hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-stone-200"
@@ -1864,11 +1876,14 @@ export default function App() {
                 profile?.role === 'professional' ? "lg:grid-cols-[1.2fr_1fr] lg:h-[calc(100vh-280px)]" : "grid-cols-1"
               )}>
                 {/* List Column */}
-                <div className={cn(
-                  "grid gap-8",
-                  profile?.role === 'professional' && displayMode === 'map' ? "hidden lg:grid" : "grid",
-                  profile?.role === 'professional' && "lg:overflow-y-auto lg:px-8 lg:pb-12 no-scrollbar"
-                )}>
+                <div 
+                  id="jobs-list"
+                  className={cn(
+                    "grid gap-8",
+                    profile?.role === 'professional' && displayMode === 'map' ? "hidden lg:grid" : "grid",
+                    profile?.role === 'professional' && "lg:overflow-y-auto lg:px-8 lg:pb-12 no-scrollbar"
+                  )}
+                >
                   {filteredJobs.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">
                       <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mb-4">
@@ -1943,10 +1958,13 @@ export default function App() {
 
                 {/* Map Column */}
                 {profile?.role === 'professional' && (
-                  <div className={cn(
-                    "h-[500px] lg:h-full w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0",
-                    displayMode === 'list' ? "hidden lg:block" : "block"
-                  )}>
+                  <div 
+                    id="jobs-map"
+                    className={cn(
+                      "h-[500px] lg:h-full w-full rounded-3xl overflow-hidden border border-zinc-200 shadow-xl mb-8 z-0",
+                      displayMode === 'list' ? "hidden lg:block" : "block"
+                    )}
+                  >
                     <MapContainer center={BUENOS_AIRES_CENTER} zoom={10} style={{ height: '100%', width: '100%' }}>
                       <TileLayer 
                         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" 
@@ -2505,6 +2523,7 @@ export default function App() {
           isOpen={showTutorial} 
           onClose={() => setShowTutorial(false)}
           onComplete={completeTutorial}
+          role={profile?.role || 'client'}
         />
 
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border px-6 py-3 flex items-center justify-around z-[1001] pb-safe">
