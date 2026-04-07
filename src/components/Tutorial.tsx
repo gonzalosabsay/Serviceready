@@ -21,10 +21,8 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
   const [currentStep, setCurrentStep] = useState(0);
 
   useEffect(() => {
-    if (isOpen) {
-      setCurrentStep(0);
-    }
-  }, [isOpen]);
+    setCurrentStep(0);
+  }, [isOpen, role]);
 
   const clientSteps: TutorialStep[] = [
     {
@@ -108,7 +106,7 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !steps[currentStep]) return null;
 
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6">

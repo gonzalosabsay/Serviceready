@@ -409,6 +409,23 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const categoriesRef = useRef<HTMLDivElement>(null);
   const jobRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const hasTriggeredTutorial = useRef<{ [key: string]: boolean }>({});
+
+  // Auto-trigger tutorial
+  useEffect(() => {
+    if (profile && !loading && !isCompletingProfile && !showProfRegistration && !showTutorial) {
+      const roleKey = `${profile.uid}-${profile.role}`;
+      if (hasTriggeredTutorial.current[roleKey]) return;
+
+      if (profile.role === 'client' && !profile.hasSeenTutorial) {
+        setShowTutorial(true);
+        hasTriggeredTutorial.current[roleKey] = true;
+      } else if (profile.role === 'professional' && !profile.hasSeenProfTutorial && profile.isProfessionalProfileComplete) {
+        setShowTutorial(true);
+        hasTriggeredTutorial.current[roleKey] = true;
+      }
+    }
+  }, [profile, loading, isCompletingProfile, showProfRegistration, showTutorial]);
 
   // Refs for registration data to avoid stale closures in onAuthStateChanged
   const registrationData = useRef({
@@ -498,12 +515,6 @@ export default function App() {
               setProfile(updatedProfile);
             } else {
               setProfile(data);
-              // Show tutorial if first time for current role
-              if (data.role === 'client' && !data.hasSeenTutorial) {
-                setShowTutorial(true);
-              } else if (data.role === 'professional' && !data.hasSeenProfTutorial && data.isProfessionalProfileComplete) {
-                setShowTutorial(true);
-              }
             }
           } else {
             // Profile doesn't exist at all
@@ -975,7 +986,8 @@ export default function App() {
         role: 'professional' as const
       };
       await updateDoc(doc(db, 'users', profile.uid), updatedData);
-      setProfile({ ...profile, ...updatedData });
+      const updatedProfile = { ...profile, ...updatedData };
+      setProfile(updatedProfile);
       setShowProfRegistration(false);
       setView('home');
     } catch (err) {
