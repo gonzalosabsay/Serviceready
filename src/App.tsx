@@ -33,6 +33,8 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { Tutorial } from './components/Tutorial';
+import { Button } from './components/ui/button';
 import { 
   UserProfile, 
   Job, 
@@ -67,7 +69,8 @@ import {
   ChevronRight,
   Phone,
   Calendar,
-  X
+  X,
+  HelpCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow, format, addHours, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
@@ -146,26 +149,6 @@ const CATEGORIES = [
   { group: "Espacios Exteriores", name: "Jardinería y Paisajismo" },
   { group: "Limpieza y Desinfección", name: "Limpieza Especializada" },
 ];
-
-const Button = ({ className, variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' }) => {
-  const variants = {
-    primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
-    secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm',
-    outline: 'border border-border text-stone-700 hover:bg-stone-50 hover:text-stone-900',
-    ghost: 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
-    danger: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm',
-  };
-  return (
-    <button 
-      className={cn(
-        'inline-flex items-center justify-center px-4 py-2.5 rounded-xl font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none select-none', 
-        variants[variant], 
-        className
-      )} 
-      {...props} 
-    />
-  );
-};
 
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input 
@@ -375,6 +358,7 @@ export default function App() {
   const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat' | 'agenda'>('home');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [selectedBid, setSelectedBid] = useState<any | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
@@ -514,6 +498,10 @@ export default function App() {
               setProfile(updatedProfile);
             } else {
               setProfile(data);
+              // Show tutorial if first time
+              if (!data.hasSeenTutorial && data.role === 'client') {
+                setShowTutorial(true);
+              }
             }
           } else {
             // Profile doesn't exist at all
@@ -873,6 +861,7 @@ export default function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setView('home');
+    setShowTutorial(false);
   };
 
   const toggleRole = async () => {
@@ -890,6 +879,18 @@ export default function App() {
       setProfile({ ...profile, role: newRole });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+    }
+  };
+
+  const completeTutorial = async () => {
+    setShowTutorial(false);
+    if (profile && !profile.hasSeenTutorial) {
+      try {
+        await updateDoc(doc(db, 'users', profile.uid), { hasSeenTutorial: true });
+        setProfile({ ...profile, hasSeenTutorial: true });
+      } catch (err) {
+        console.error('Error updating tutorial status:', err);
+      }
     }
   };
 
@@ -1716,6 +1717,14 @@ export default function App() {
                 <span className="hidden sm:inline">Cambiar a {profile ? (profile.role === 'client' ? 'Profesional' : 'Cliente') : '...'}</span>
                 <span className="sm:hidden inline">Cambiar</span>
               </Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowTutorial(true)}
+                className="text-[9px] lg:text-[11px] uppercase tracking-widest font-black h-6 lg:h-8 px-2 lg:px-3 rounded-lg text-stone-500 hover:text-primary hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-stone-200"
+                title="Ver Tutorial"
+              >
+                <HelpCircle className="w-4 h-4 lg:w-5 lg:h-5" />
+              </Button>
             </div>
             <div 
               className="w-9 h-9 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl overflow-hidden border-2 border-white cursor-pointer hover:border-primary transition-all shadow-md active:scale-95 flex-shrink-0"
@@ -1736,6 +1745,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               className={cn("p-6 mx-auto w-full", profile?.role === 'professional' ? "max-w-7xl" : "max-w-4xl")}
+              id="main-content"
             >
               {profile?.role === 'professional' && !profile.isProfessionalProfileComplete ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-stone-200 shadow-sm text-center px-6">
@@ -1784,7 +1794,7 @@ export default function App() {
                         </div>
                       )}
                       {profile?.role === 'client' && (
-                        <Button onClick={() => setView('create-job')} className="flex items-center gap-2">
+                        <Button id="new-job-button" onClick={() => setView('create-job')} className="flex items-center gap-2">
                           <Plus className="w-5 h-5" /> Nuevo Trabajo
                         </Button>
                       )}
@@ -2489,6 +2499,13 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+
+        {/* Tutorial Overlay */}
+        <Tutorial 
+          isOpen={showTutorial} 
+          onClose={() => setShowTutorial(false)}
+          onComplete={completeTutorial}
+        />
 
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border px-6 py-3 flex items-center justify-around z-[1001] pb-safe">
         <NavButton active={view === 'home'} onClick={() => setView('home')} icon={<Briefcase />} label="Trabajos" />

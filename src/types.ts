@@ -18,6 +18,7 @@ export interface UserProfile {
   licenseNumber?: string;
   isProfessionalProfileComplete?: boolean;
   isAdmin?: boolean;
+  hasSeenTutorial?: boolean;
 }
 
 export type JobStatus = 'Open' | 'Assigned' | 'Completed';

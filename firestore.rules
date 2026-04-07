@@ -56,7 +56,7 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'displayName', 'firstName', 'lastName', 'username', 'email', 'photoURL', 'birthDate', 'phoneNumber', 'role', 'avgRating', 'numReviews', 'specialties', 'professionalDescription', 'licenseNumber', 'isProfessionalProfileComplete', 'isAdmin']) &&
+      return hasOnlyAllowedFields(['uid', 'displayName', 'firstName', 'lastName', 'username', 'email', 'photoURL', 'birthDate', 'phoneNumber', 'role', 'avgRating', 'numReviews', 'specialties', 'professionalDescription', 'licenseNumber', 'isProfessionalProfileComplete', 'isAdmin', 'hasSeenTutorial']) &&
              data.uid is string && data.displayName is string && data.displayName.size() > 0 &&
              data.firstName is string && data.firstName.size() > 0 &&
              data.lastName is string && data.lastName.size() > 0 &&
@@ -69,7 +69,8 @@ service cloud.firestore {
              (!('professionalDescription' in data) || data.professionalDescription is string) &&
              (!('licenseNumber' in data) || data.licenseNumber is string) &&
              (!('isProfessionalProfileComplete' in data) || data.isProfessionalProfileComplete is bool) &&
-             (!('isAdmin' in data) || data.isAdmin is bool);
+             (!('isAdmin' in data) || data.isAdmin is bool) &&
+             (!('hasSeenTutorial' in data) || data.hasSeenTutorial is bool);
     }
 
     function isValidJob(data) {

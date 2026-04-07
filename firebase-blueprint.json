@@ -21,7 +21,8 @@
         "professionalDescription": { "type": "string" },
         "licenseNumber": { "type": "string" },
         "isProfessionalProfileComplete": { "type": "boolean" },
-        "isAdmin": { "type": "boolean" }
+        "isAdmin": { "type": "boolean" },
+        "hasSeenTutorial": { "type": "boolean" }
       },
       "required": ["uid", "displayName", "firstName", "lastName", "username", "email", "birthDate", "phoneNumber", "role"]
     },
