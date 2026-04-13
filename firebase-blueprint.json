@@ -64,7 +64,10 @@
         "professionalId": { "type": "string" },
         "proposedPrice": { "type": "number" },
         "message": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isContacted": { "type": "boolean" },
+        "isReadByClient": { "type": "boolean" },
+        "isReadByProfessional": { "type": "boolean" }
       },
       "required": ["jobId", "clientId", "professionalId", "proposedPrice", "createdAt"]
     },

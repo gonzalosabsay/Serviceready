@@ -54,6 +54,8 @@ export interface Bid {
   lastMessage?: string;
   lastMessageAt?: string;
   isContacted?: boolean;
+  isReadByClient?: boolean;
+  isReadByProfessional?: boolean;
 }
 
 export interface Message {

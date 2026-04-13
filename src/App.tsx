@@ -403,6 +403,8 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadBidsCount, setUnreadBidsCount] = useState(0);
+  const [unreadContactedCount, setUnreadContactedCount] = useState(0);
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
@@ -704,9 +706,14 @@ export default function App() {
       try {
         const contactedBidIds = new Set<string>();
         await Promise.all(bidIds.map(async (id) => {
-          const bidSnap = await getDoc(doc(db, 'bids', id));
-          if (bidSnap.exists() && (bidSnap.data() as Bid).isContacted === true) {
-            contactedBidIds.add(id);
+          try {
+            const bidSnap = await getDoc(doc(db, 'bids', id));
+            if (bidSnap.exists() && (bidSnap.data() as Bid).isContacted === true) {
+              contactedBidIds.add(id);
+            }
+          } catch (err) {
+            console.error(`Error fetching bid ${id} for unread check:`, err);
+            // If we can't read the bid, we assume it's not contacted or we don't have access
           }
         }));
 
@@ -719,6 +726,40 @@ export default function App() {
       }
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'messages');
+    });
+    return unsubscribe;
+  }, [profile]);
+
+  // Unread Bids Listener (for Clients)
+  useEffect(() => {
+    if (!profile || profile.role !== 'client') {
+      setUnreadBidsCount(0);
+      return;
+    }
+    const q = query(collection(db, 'bids'), where('clientId', '==', profile.uid), where('isReadByClient', '==', false));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadBidsCount(snapshot.size);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
+    });
+    return unsubscribe;
+  }, [profile]);
+
+  // Unread Contacted Bids Listener (for Professionals)
+  useEffect(() => {
+    if (!profile || profile.role !== 'professional') {
+      setUnreadContactedCount(0);
+      return;
+    }
+    const q = query(collection(db, 'bids'), 
+      where('professionalId', '==', profile.uid), 
+      where('isContacted', '==', true),
+      where('isReadByProfessional', '==', false)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadContactedCount(snapshot.size);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
     });
     return unsubscribe;
   }, [profile]);
@@ -844,10 +885,24 @@ export default function App() {
     // If not contacted yet and current user is the client, mark as contacted
     if (!enrichedBid.isContacted && profile && enrichedBid.clientId === profile.uid) {
       try {
-        await updateDoc(doc(db, 'bids', enrichedBid.id), { isContacted: true });
+        await updateDoc(doc(db, 'bids', enrichedBid.id), { 
+          isContacted: true,
+          isReadByProfessional: false 
+        });
         enrichedBid.isContacted = true;
+        enrichedBid.isReadByProfessional = false;
       } catch (err) {
         console.error('Error marking bid as contacted:', err);
+      }
+    }
+
+    // If professional is opening a contacted bid that is unread, mark as read
+    if (enrichedBid.isContacted && profile && enrichedBid.professionalId === profile.uid && enrichedBid.isReadByProfessional === false) {
+      try {
+        await updateDoc(doc(db, 'bids', enrichedBid.id), { isReadByProfessional: true });
+        enrichedBid.isReadByProfessional = true;
+      } catch (err) {
+        console.error('Error marking bid as read by professional:', err);
       }
     }
 
@@ -1140,6 +1195,8 @@ export default function App() {
       lastMessage: formData.get('message') as string,
       lastMessageAt: new Date().toISOString(),
       isContacted: false,
+      isReadByClient: false,
+      isReadByProfessional: true,
     };
 
     try {
@@ -2575,8 +2632,20 @@ export default function App() {
         />
 
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border px-6 py-3 flex items-center justify-around z-[1001] pb-safe">
-        <NavButton active={view === 'home'} onClick={() => setView('home')} icon={<Briefcase />} label="Trabajos" />
-        <NavButton active={view === 'messages' || view === 'chat'} onClick={() => setView('messages')} icon={<MessageSquare />} label="Mensajes" badge={unreadCount} />
+        <NavButton 
+          active={view === 'home'} 
+          onClick={() => setView('home')} 
+          icon={<Briefcase />} 
+          label="Trabajos" 
+          badge={profile?.role === 'client' ? unreadBidsCount : 0} 
+        />
+        <NavButton 
+          active={view === 'messages' || view === 'chat'} 
+          onClick={() => setView('messages')} 
+          icon={<MessageSquare />} 
+          label="Mensajes" 
+          badge={unreadCount + unreadContactedCount} 
+        />
         <NavButton active={view === 'agenda'} onClick={() => setView('agenda')} icon={<Calendar />} label="Agenda" />
         <NavButton active={view === 'profile'} onClick={() => setView('profile')} icon={<UserIcon />} label="Perfil" />
       </nav>
@@ -3121,6 +3190,20 @@ function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSele
         .map(doc => ({ id: doc.id, ...doc.data() } as Bid))
         .filter(bid => bid.isContacted !== true);
       
+      // Mark as read by client if any are unread
+      const unreadBids = bData.filter(b => b.isReadByClient === false);
+      if (unreadBids.length > 0) {
+        try {
+          const batch = writeBatch(db);
+          unreadBids.forEach(b => {
+            batch.update(doc(db, 'bids', b.id), { isReadByClient: true });
+          });
+          await batch.commit();
+        } catch (err) {
+          console.error("Error marking bids as read by client:", err);
+        }
+      }
+
       try {
         const fullBids = await Promise.all(bData.map(async (bid) => {
           if (cacheRef.current.users[bid.professionalId]) {
@@ -3143,6 +3226,8 @@ function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSele
       } catch (err) {
         console.error("Error processing bids snapshot:", err);
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
     });
     return unsubscribe;
   }, [jobId]);
@@ -3165,7 +3250,12 @@ function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSele
               <img src={bid.professional?.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             </div>
             <div className="min-w-0 cursor-pointer" onClick={() => bid.professional && onViewProfile(bid.professional)}>
-              <h4 className="font-bold text-stone-900 truncate group-hover:text-primary transition-colors">{bid.professional?.displayName}</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-stone-900 truncate group-hover:text-primary transition-colors">{bid.professional?.displayName}</h4>
+                {bid.isReadByClient === false && (
+                  <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                )}
+              </div>
               <p className="text-sm text-stone-500 truncate leading-tight">{bid.lastMessage || bid.message}</p>
               <div className="flex items-center gap-1 mt-1">
                 <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
@@ -3534,8 +3624,12 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
     const qProfessional = query(collection(db, 'bids'), where('professionalId', '==', profile.uid));
     const qClient = query(collection(db, 'bids'), where('clientId', '==', profile.uid));
 
-    const unsubProf = onSnapshot(qProfessional, (snap) => handleSnapshot(snap, lastUpdateProfRef, setProfBids));
-    const unsubClient = onSnapshot(qClient, (snap) => handleSnapshot(snap, lastUpdateClientRef, setClientBids));
+    const unsubProf = onSnapshot(qProfessional, (snap) => handleSnapshot(snap, lastUpdateProfRef, setProfBids), (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
+    });
+    const unsubClient = onSnapshot(qClient, (snap) => handleSnapshot(snap, lastUpdateClientRef, setClientBids), (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
+    });
 
     return () => {
       unsubProf();
@@ -3573,7 +3667,7 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
             onClick={() => onSelectConversation(conv)}
             className={cn(
               "bg-white p-4 rounded-[2rem] border flex items-center gap-4 cursor-pointer transition-all card-hover group",
-              unreadBidIds.has(conv.id) 
+              (unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false))
                 ? "border-primary/30 shadow-md bg-primary/5 ring-1 ring-primary/20" 
                 : "border-border shadow-sm hover:border-primary/20"
             )}
@@ -3582,17 +3676,17 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
               <div className="w-14 h-14 rounded-2xl overflow-hidden bg-stone-100 border border-border group-hover:border-primary/30 transition-colors">
                 <img src={conv.otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
               </div>
-              {unreadBidIds.has(conv.id) && (
+              {(unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false)) && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full border-2 border-white shadow-sm animate-pulse" />
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start mb-1">
-                <h4 className={cn("truncate text-base", unreadBidIds.has(conv.id) ? "font-bold text-stone-900" : "font-semibold text-stone-700")}>
+                <h4 className={cn("truncate text-base", (unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false)) ? "font-bold text-stone-900" : "font-semibold text-stone-700")}>
                   {conv.otherUser?.displayName}
                 </h4>
                 <div className="flex items-center gap-2">
-                  <span className={cn("text-[10px] font-bold uppercase tracking-wider", unreadBidIds.has(conv.id) ? "text-primary" : "text-stone-400")}>
+                  <span className={cn("text-[10px] font-bold uppercase tracking-wider", (unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false)) ? "text-primary" : "text-stone-400")}>
                     {formatDistanceToNow(new Date(conv.lastMessageAt || conv.createdAt), { addSuffix: true, locale: es })}
                   </span>
                   <button 
@@ -3610,11 +3704,11 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
               </div>
               <div className="flex items-center gap-1.5 mb-1">
                 <Briefcase className="w-3 h-3 text-primary/60" />
-                <p className={cn("text-xs font-bold truncate uppercase tracking-tight", unreadBidIds.has(conv.id) ? "text-primary" : "text-stone-500")}>
+                <p className={cn("text-xs font-bold truncate uppercase tracking-tight", (unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false)) ? "text-primary" : "text-stone-500")}>
                   {conv.job?.title}
                 </p>
               </div>
-              <p className={cn("text-sm truncate leading-tight", unreadBidIds.has(conv.id) ? "text-stone-900 font-medium" : "text-stone-500")}>
+              <p className={cn("text-sm truncate leading-tight", (unreadBidIds.has(conv.id) || (profile?.role === 'professional' && conv.isReadByProfessional === false)) ? "text-stone-900 font-medium" : "text-stone-500")}>
                 {conv.lastMessage || conv.message}
               </p>
             </div>

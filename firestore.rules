@@ -12,7 +12,7 @@ service cloud.firestore {
     // Fields: id, clientId, category, title, description, status, location, photos, assignedProfessionalId, isUrgent, createdAt
     //
     // Collection: bids
-    // Fields: id, jobId, professionalId, proposedPrice, message, createdAt
+    // Fields: id, jobId, professionalId, proposedPrice, message, createdAt, isContacted, isReadByClient, isReadByProfessional
     //
     // Collection: messages
     // Fields: id, bidId, senderId, recipientId, text, timestamp, read
@@ -88,7 +88,10 @@ service cloud.firestore {
              data.professionalId != data.clientId &&
              (!('message' in data) || data.message is string) &&
              (!('lastMessage' in data) || data.lastMessage is string) &&
-             (!('lastMessageAt' in data) || data.lastMessageAt is string);
+             (!('lastMessageAt' in data) || data.lastMessageAt is string) &&
+             (!('isContacted' in data) || data.isContacted is bool) &&
+             (!('isReadByClient' in data) || data.isReadByClient is bool) &&
+             (!('isReadByProfessional' in data) || data.isReadByProfessional is bool);
     }
 
     function isValidMessage(data) {
