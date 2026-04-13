@@ -1273,7 +1273,11 @@ export default function App() {
     setIsDeleting(true);
     try {
       // Delete associated bids and messages first
-      const bidsQuery = query(collection(db, 'bids'), where('jobId', '==', selectedJob.id));
+      const bidsQuery = query(
+        collection(db, 'bids'), 
+        where('jobId', '==', selectedJob.id),
+        where('clientId', '==', profile.uid)
+      );
       const bidsSnap = await getDocs(bidsQuery);
       
       const batch = writeBatch(db);
@@ -2319,6 +2323,7 @@ export default function App() {
                       <h3 className="text-xl font-bold">Postulaciones</h3>
                       <BidsList 
                         jobId={selectedJob.id} 
+                        clientId={selectedJob.clientId}
                         onSelectBid={openChat} 
                         onViewProfile={setViewingProfile}
                       />
@@ -3177,13 +3182,18 @@ function NavButton({ active, onClick, icon, label, badge }: { active: boolean, o
   );
 }
 
-function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSelectBid: (bid: Bid) => void, onViewProfile: (profile: UserProfile) => void }) {
+function BidsList({ jobId, clientId, onSelectBid, onViewProfile }: { jobId: string, clientId: string, onSelectBid: (bid: Bid) => void, onViewProfile: (profile: UserProfile) => void }) {
   const [bids, setBids] = useState<(Bid & { professional?: UserProfile })[]>([]);
   const lastUpdateRef = useRef(0);
   const cacheRef = useRef<{ users: Record<string, UserProfile> }>({ users: {} });
 
   useEffect(() => {
-    const q = query(collection(db, 'bids'), where('jobId', '==', jobId), orderBy('createdAt', 'desc'));
+    const q = query(
+      collection(db, 'bids'), 
+      where('jobId', '==', jobId), 
+      where('clientId', '==', clientId),
+      orderBy('createdAt', 'desc')
+    );
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const updateId = ++lastUpdateRef.current;
       const bData = snapshot.docs
