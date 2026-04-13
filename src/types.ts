@@ -53,6 +53,7 @@ export interface Bid {
   job?: Job;
   lastMessage?: string;
   lastMessageAt?: string;
+  isContacted?: boolean;
 }
 
 export interface Message {

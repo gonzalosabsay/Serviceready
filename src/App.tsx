@@ -690,10 +690,33 @@ export default function App() {
   useEffect(() => {
     if (!profile) return;
     const q = query(collection(db, 'messages'), where('recipientId', '==', profile.uid), where('read', '==', false));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadCount(snapshot.size);
-      const ids = new Set(snapshot.docs.map(doc => doc.data().bidId as string));
-      setUnreadBidIds(ids);
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      const bidIds = Array.from(new Set(messages.map(m => m.bidId)));
+      
+      if (bidIds.length === 0) {
+        setUnreadCount(0);
+        setUnreadBidIds(new Set());
+        return;
+      }
+
+      // Filter by isContacted
+      try {
+        const contactedBidIds = new Set<string>();
+        await Promise.all(bidIds.map(async (id) => {
+          const bidSnap = await getDoc(doc(db, 'bids', id));
+          if (bidSnap.exists() && (bidSnap.data() as Bid).isContacted === true) {
+            contactedBidIds.add(id);
+          }
+        }));
+
+        const filteredMessages = messages.filter(m => contactedBidIds.has(m.bidId));
+        setUnreadCount(filteredMessages.length);
+        setUnreadBidIds(contactedBidIds);
+      } catch (err) {
+        console.error("Error filtering unread messages:", err);
+        setUnreadCount(snapshot.size); // Fallback
+      }
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'messages');
     });
@@ -818,6 +841,16 @@ export default function App() {
     // If job details are missing, fetch them
     let enrichedBid = { ...bid };
     
+    // If not contacted yet and current user is the client, mark as contacted
+    if (!enrichedBid.isContacted && profile && enrichedBid.clientId === profile.uid) {
+      try {
+        await updateDoc(doc(db, 'bids', enrichedBid.id), { isContacted: true });
+        enrichedBid.isContacted = true;
+      } catch (err) {
+        console.error('Error marking bid as contacted:', err);
+      }
+    }
+
     // Ensure otherUser is populated for the chat view
     if (!enrichedBid.otherUser) {
       if (enrichedBid.professional) {
@@ -1106,6 +1139,7 @@ export default function App() {
       createdAt: new Date().toISOString(),
       lastMessage: formData.get('message') as string,
       lastMessageAt: new Date().toISOString(),
+      isContacted: false,
     };
 
     try {
@@ -1127,7 +1161,8 @@ export default function App() {
 
       // Set the selected bid so the chat view can open it
       setSelectedBid({ id: bidRef.id, ...newBid } as Bid);
-      setView('messages');
+      setView('home');
+      setSelectedJob(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'bids');
       setError('Error al enviar la postulación. Por favor, intenta de nuevo.');
@@ -1744,10 +1779,11 @@ export default function App() {
               <Button 
                 variant="ghost" 
                 onClick={() => setShowTutorial(true)}
-                className="text-[9px] lg:text-[11px] uppercase tracking-widest font-black h-6 lg:h-8 px-2 lg:px-3 rounded-lg text-stone-500 hover:text-primary hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-stone-200"
+                className="text-[9px] lg:text-[11px] uppercase tracking-widest font-black h-6 lg:h-8 px-2 lg:px-3 rounded-lg text-stone-500 hover:text-primary hover:bg-white hover:shadow-sm transition-all border border-transparent hover:border-stone-200 flex items-center gap-1.5"
                 title="Ver Tutorial"
               >
                 <HelpCircle className="w-4 h-4 lg:w-5 lg:h-5" />
+                <span className="hidden sm:inline">Ayuda</span>
               </Button>
             </div>
             <div 
@@ -3081,7 +3117,9 @@ function BidsList({ jobId, onSelectBid, onViewProfile }: { jobId: string, onSele
     const q = query(collection(db, 'bids'), where('jobId', '==', jobId), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const updateId = ++lastUpdateRef.current;
-      const bData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
+      const bData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Bid))
+        .filter(bid => bid.isContacted !== true);
       
       try {
         const fullBids = await Promise.all(bData.map(async (bid) => {
@@ -3439,8 +3477,17 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
 
     const handleSnapshot = async (snapshot: any, updateRef: React.MutableRefObject<number>, setter: (data: any) => void) => {
       const updateId = ++updateRef.current;
-      const bData = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() } as Bid));
+      const bData = snapshot.docs
+        .map((doc: any) => ({ id: doc.id, ...doc.data() } as Bid))
+        .filter((bid: Bid) => bid.isContacted === true);
       
+      if (bData.length === 0) {
+        if (updateId === updateRef.current) {
+          setter([]);
+        }
+        return;
+      }
+
       try {
         const enriched = await Promise.all(bData.map(async (bid: Bid) => {
           const otherUserId = bid.professionalId === profile.uid ? bid.clientId : bid.professionalId;
