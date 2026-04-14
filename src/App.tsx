@@ -331,7 +331,7 @@ const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile |
 // --- Main App ---
 
 const BUENOS_AIRES_CENTER: [number, number] = [-34.6037, -58.3816];
-const ADMIN_EMAILS = ['gonzalo.sabsay@gmail.com'];
+const ADMIN_EMAILS = ['gonzalo.sabsay@gmail.com', 'gonzalo.sabsay@hotmail.com'];
 
 const redIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
@@ -1275,8 +1275,7 @@ export default function App() {
       // Delete associated bids and messages first
       const bidsQuery = query(
         collection(db, 'bids'), 
-        where('jobId', '==', selectedJob.id),
-        where('clientId', '==', profile.uid)
+        where('jobId', '==', selectedJob.id)
       );
       const bidsSnap = await getDocs(bidsQuery);
       
@@ -1315,7 +1314,8 @@ export default function App() {
     const now = new Date();
     const hasUpcomingAppointment = relevantAppointments.some(a => {
       const startTime = parseISO(a.startTime);
-      return a.status === 'Accepted' && differenceInHours(startTime, now) < 48;
+      // Only block if it's an Accepted appointment in the FUTURE and within 48 hours
+      return a.status === 'Accepted' && startTime > now && differenceInHours(startTime, now) < 48;
     });
 
     if (hasUpcomingAppointment) {
@@ -2714,6 +2714,17 @@ export default function App() {
             profile={profile} 
             onUpdateStatus={async (apptId, status) => {
               try {
+                if (status === 'Cancelled') {
+                  const appt = appointments.find(a => a.id === apptId);
+                  if (appt && appt.status === 'Accepted') {
+                    const now = new Date();
+                    const startTime = parseISO(appt.startTime);
+                    if (differenceInHours(startTime, now) < 48) {
+                      setError("No se puede cancelar un encuentro confirmado con menos de 48 horas de anticipación.");
+                      return;
+                    }
+                  }
+                }
                 await updateDoc(doc(db, 'appointments', apptId), { status });
               } catch (err) {
                 handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
