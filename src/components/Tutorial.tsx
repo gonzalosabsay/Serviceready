@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
-import { X, ChevronRight, ChevronLeft, HelpCircle, Plus, Layout, MessageSquare, Calendar } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, HelpCircle, Plus, Layout, MessageSquare, Calendar, Star, CheckCircle } from 'lucide-react';
 
 interface TutorialStep {
   title: string;
@@ -49,8 +49,13 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
     },
     {
       title: "Agenda y Encuentros",
-      description: "Cuando aceptes un presupuesto, podrás proponer un horario de encuentro. Todo quedará registrado en tu Agenda.",
+      description: "Cuando aceptes un presupuesto, podrán acordar un horario de encuentro. Todo quedará registrado en tu Agenda para que no olvides ninguna cita.",
       icon: <Calendar className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Confirmar y Calificar",
+      description: "Una vez realizado el servicio, confirma la visita y califica al profesional. Esto es clave para cerrar el trámite y mejorar la reputación de la comunidad.",
+      icon: <Star className="w-8 h-8 text-primary" />
     },
     {
       title: "Perfil Profesional",
@@ -85,8 +90,18 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
     },
     {
       title: "¿Qué pasa después?",
-      description: "Si al cliente le interesa tu propuesta, te contactará por chat. Podrán acordar detalles y fijar un encuentro en la Agenda.",
+      description: "Si al cliente le interesa tu propuesta, te contactará por chat. Podrán acordar detalles y fijar un encuentro que verás en tu Agenda.",
       icon: <MessageSquare className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Calendario y Organización",
+      description: "Usa el nuevo calendario en tu Agenda para organizar tu semana. Selecciona un día para ver todas tus visitas programadas a la derecha.",
+      icon: <Calendar className="w-8 h-8 text-primary" />
+    },
+    {
+      title: "Confirmación y Calificación",
+      description: "Al terminar un trabajo, confirma la visita y califica al cliente. Esto actualizará tu reputación y te ayudará a conseguir más trabajos.",
+      icon: <CheckCircle className="w-8 h-8 text-primary" />
     }
   ];
 
