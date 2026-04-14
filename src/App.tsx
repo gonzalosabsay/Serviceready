@@ -1228,6 +1228,30 @@ export default function App() {
 
   const [isSending, setIsSending] = useState(false);
 
+  const sendSystemMessage = async (bidId: string, text: string, senderId: string, recipientId: string) => {
+    const timestamp = new Date().toISOString();
+    try {
+      const batch = writeBatch(db);
+      const msgRef = doc(collection(db, 'messages'));
+      batch.set(msgRef, {
+        bidId,
+        senderId,
+        recipientId,
+        text,
+        timestamp,
+        read: false,
+        isSystem: true
+      });
+      batch.update(doc(db, 'bids', bidId), {
+        lastMessage: text,
+        lastMessageAt: timestamp
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Error sending system message:", err);
+    }
+  };
+
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!profile || !selectedBid || isSending) return;
@@ -2601,6 +2625,19 @@ export default function App() {
                           onClick={async () => {
                             try {
                               await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Accepted' });
+                              
+                              // Send automatic message
+                              if (selectedBid && profile) {
+                                const startTime = parseISO(activeAppointment.startTime);
+                                const formattedDate = format(startTime, "EEEE d 'de' MMMM 'a las' HH:mm", { locale: es });
+                                const systemMsg = `✅ ¡Encuentro confirmado! Nos vemos el ${formattedDate}. Recordá que no se puede cancelar con menos de 48hs de anticipación.`;
+                                await sendSystemMessage(
+                                  selectedBid.id,
+                                  systemMsg,
+                                  profile.uid,
+                                  activeAppointment.proposedBy
+                                );
+                              }
                             } catch (err) {
                               handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
                             }
@@ -2614,6 +2651,17 @@ export default function App() {
                           onClick={async () => {
                             try {
                               await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Rejected' });
+                              
+                              // Send automatic message
+                              if (selectedBid && profile) {
+                                const systemMsg = `❌ He rechazado la propuesta de encuentro.`;
+                                await sendSystemMessage(
+                                  selectedBid.id,
+                                  systemMsg,
+                                  profile.uid,
+                                  activeAppointment.proposedBy
+                                );
+                              }
                             } catch (err) {
                               handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
                             }
@@ -2642,18 +2690,22 @@ export default function App() {
                   </div>
                 </div>
                 {messages.map(msg => (
-                  <div key={msg.id} className={cn('flex flex-col', msg.senderId === profile?.uid ? 'items-end' : 'items-start')}>
+                  <div key={msg.id} className={cn('flex flex-col', msg.isSystem ? 'items-center my-4' : (msg.senderId === profile?.uid ? 'items-end' : 'items-start'))}>
                     <div className={cn(
                       'max-w-[85%] px-4 py-3 rounded-[1.5rem] text-sm shadow-sm leading-relaxed', 
-                      msg.senderId === profile?.uid 
-                        ? 'bg-primary text-white rounded-tr-none shadow-primary/20' 
-                        : 'bg-white text-stone-800 rounded-tl-none border border-border'
+                      msg.isSystem
+                        ? 'bg-stone-100 text-stone-600 border border-stone-200 text-center italic text-xs rounded-2xl'
+                        : (msg.senderId === profile?.uid 
+                          ? 'bg-primary text-white rounded-tr-none shadow-primary/20' 
+                          : 'bg-white text-stone-800 rounded-tl-none border border-border')
                     )}>
                       {msg.text}
                     </div>
-                    <span className="text-[9px] font-bold text-stone-400 mt-1 px-1 uppercase">
-                      {msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true, locale: es }) : 'Ahora'}
-                    </span>
+                    {!msg.isSystem && (
+                      <span className="text-[9px] font-bold text-stone-400 mt-1 px-1 uppercase">
+                        {msg.timestamp ? formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true, locale: es }) : 'Ahora'}
+                      </span>
+                    )}
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
@@ -2686,8 +2738,8 @@ export default function App() {
               profile={profile} 
               onUpdateStatus={async (apptId, status) => {
                 try {
+                  const appt = appointments.find(a => a.id === apptId);
                   if (status === 'Cancelled') {
-                    const appt = appointments.find(a => a.id === apptId);
                     if (appt && appt.status === 'Accepted') {
                       const now = new Date();
                       const startTime = parseISO(appt.startTime);
@@ -2698,6 +2750,18 @@ export default function App() {
                     }
                   }
                   await updateDoc(doc(db, 'appointments', apptId), { status });
+
+                  // Send automatic message if cancelled
+                  if (status === 'Cancelled' && appt && profile) {
+                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
+                    const systemMsg = `🚫 El encuentro programado para el ${format(parseISO(appt.startTime), "d 'de' MMM, HH:mm", { locale: es })} ha sido cancelado.`;
+                    await sendSystemMessage(
+                      appt.bidId,
+                      systemMsg,
+                      profile.uid,
+                      otherUserId
+                    );
+                  }
                 } catch (err) {
                   handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
                 }
@@ -3206,6 +3270,20 @@ export default function App() {
                   ...apptData,
                   createdAt: new Date().toISOString()
                 });
+                
+                // Send automatic message
+                if (selectedBid) {
+                  const startTime = parseISO(apptData.startTime);
+                  const formattedDate = format(startTime, "EEEE d 'de' MMMM 'a las' HH:mm", { locale: es });
+                  const systemMsg = `📅 He propuesto un encuentro para el ${formattedDate}.`;
+                  await sendSystemMessage(
+                    selectedBid.id,
+                    systemMsg,
+                    profile.uid,
+                    selectedBid.clientId
+                  );
+                }
+
                 setShowAppointmentModal(false);
               } catch (err) {
                 console.error('Error proposing appointment:', err);
