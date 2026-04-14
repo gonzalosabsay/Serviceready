@@ -109,11 +109,13 @@ service cloud.firestore {
 
     function isValidAppointment(data) {
       return hasRequiredFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
-             hasOnlyAllowedFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
+             hasOnlyAllowedFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'clientRated', 'professionalRated', 'createdAt']) &&
              data.jobId is string && data.bidId is string && data.clientId is string && data.professionalId is string &&
              data.startTime is string && data.endTime is string &&
              data.status in ['Proposed', 'Accepted', 'Rejected', 'Cancelled', 'Completed'] &&
              data.proposedBy is string &&
+             (!('clientRated' in data) || data.clientRated is bool) &&
+             (!('professionalRated' in data) || data.professionalRated is bool) &&
              data.clientId != data.professionalId;
     }
 

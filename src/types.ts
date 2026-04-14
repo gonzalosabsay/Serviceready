@@ -91,6 +91,8 @@ export interface Appointment {
   endTime: string;
   status: AppointmentStatus;
   proposedBy: string;
+  clientRated?: boolean;
+  professionalRated?: boolean;
   createdAt: string;
   job?: Job;
   otherUser?: UserProfile;

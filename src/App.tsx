@@ -367,9 +367,15 @@ export default function App() {
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [ratingAppointment, setRatingAppointment] = useState<Appointment | null>(null);
+
   const activeAppointment = useMemo(() => {
-    return appointments.find(a => a.bidId === selectedBid?.id && (a.status === 'Proposed' || a.status === 'Accepted'));
-  }, [appointments, selectedBid]);
+    return appointments.find(a => a.bidId === selectedBid?.id && 
+      (a.status === 'Proposed' || a.status === 'Accepted' || 
+       (a.status === 'Completed' && (profile?.role === 'client' ? !a.clientRated : !a.professionalRated)))
+    );
+  }, [appointments, selectedBid, profile]);
 
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1291,6 +1297,64 @@ export default function App() {
     }
   };
 
+  const submitRating = async (stars: number, comment: string) => {
+    if (!profile || !ratingAppointment) return;
+    try {
+      const reviewerId = profile.uid;
+      const reviewedId = profile.role === 'client' ? ratingAppointment.professionalId : ratingAppointment.clientId;
+      const jobId = ratingAppointment.jobId;
+
+      // 1. Create review
+      await addDoc(collection(db, 'reviews'), {
+        reviewerId,
+        reviewedId,
+        jobId,
+        stars,
+        comment,
+        createdAt: new Date().toISOString()
+      });
+
+      // 2. Update user profile (avgRating, numReviews)
+      const reviewedRef = doc(db, 'users', reviewedId);
+      const reviewedSnap = await getDoc(reviewedRef);
+      if (reviewedSnap.exists()) {
+        const reviewedData = reviewedSnap.data() as UserProfile;
+        const oldAvg = reviewedData.avgRating || 0;
+        const oldNum = reviewedData.numReviews || 0;
+        const newNum = oldNum + 1;
+        const newAvg = ((oldAvg * oldNum) + stars) / newNum;
+        
+        await updateDoc(reviewedRef, {
+          avgRating: newAvg,
+          numReviews: newNum
+        });
+      }
+
+      // 3. Update appointment (clientRated or professionalRated)
+      const apptRef = doc(db, 'appointments', ratingAppointment.id);
+      if (profile.role === 'client') {
+        await updateDoc(apptRef, { clientRated: true });
+      } else {
+        await updateDoc(apptRef, { professionalRated: true });
+      }
+
+      // 4. Send system message
+      const systemMsg = `⭐ ${profile.displayName} ha calificado el encuentro con ${stars} estrellas.`;
+      await sendSystemMessage(
+        ratingAppointment.bidId,
+        systemMsg,
+        profile.uid,
+        reviewedId
+      );
+
+      setShowRatingModal(false);
+      setRatingAppointment(null);
+    } catch (err) {
+      console.error("Error submitting rating:", err);
+      setError("Error al enviar la calificación.");
+    }
+  };
+
   const deleteJob = async () => {
     if (!selectedJob) return;
     console.log("Deleting job:", selectedJob.id);
@@ -1900,7 +1964,7 @@ export default function App() {
                 title="Ver Tutorial"
               >
                 <HelpCircle className="w-4 h-4 lg:w-5 lg:h-5" />
-                <span className="hidden sm:inline">Ayuda</span>
+                <span>Ayuda</span>
               </Button>
             </div>
             <div 
@@ -2611,7 +2675,9 @@ export default function App() {
                     <Calendar className="w-5 h-5 text-primary" />
                     <div>
                       <p className="text-xs font-bold text-stone-900">
-                        Encuentro {activeAppointment.status === 'Proposed' ? 'propuesto' : 'confirmado'}
+                        {activeAppointment.status === 'Proposed' ? 'Encuentro propuesto' : 
+                         activeAppointment.status === 'Accepted' ? 'Encuentro confirmado' : 
+                         'Encuentro finalizado'}
                       </p>
                       <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">
                         {format(parseISO(activeAppointment.startTime), "d 'de' MMM, HH:mm", { locale: es })}
@@ -2619,6 +2685,45 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {activeAppointment.status === 'Accepted' && parseISO(activeAppointment.endTime) <= new Date() && (
+                      <Button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Completed' });
+                            
+                            // Send automatic message
+                            if (selectedBid && profile) {
+                              const otherUserId = profile.uid === activeAppointment.clientId ? activeAppointment.professionalId : activeAppointment.clientId;
+                              const systemMsg = `✅ El encuentro ha sido marcado como realizado. ¡No olvides calificar la experiencia!`;
+                              await sendSystemMessage(
+                                selectedBid.id,
+                                systemMsg,
+                                profile.uid,
+                                otherUserId
+                              );
+                            }
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
+                          }
+                        }}
+                        className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-primary"
+                      >
+                        Confirmar Visita
+                      </Button>
+                    )}
+
+                    {activeAppointment.status === 'Completed' && (
+                      <Button 
+                        onClick={() => {
+                          setRatingAppointment(activeAppointment);
+                          setShowRatingModal(true);
+                        }}
+                        className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        Calificar
+                      </Button>
+                    )}
+
                     {activeAppointment.status === 'Proposed' && activeAppointment.proposedBy !== profile?.uid && (
                       <div className="flex gap-2">
                         <Button 
@@ -2751,10 +2856,21 @@ export default function App() {
                   }
                   await updateDoc(doc(db, 'appointments', apptId), { status });
 
-                  // Send automatic message if cancelled
+                  // Send automatic message if cancelled or completed
                   if (status === 'Cancelled' && appt && profile) {
                     const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
                     const systemMsg = `🚫 El encuentro programado para el ${format(parseISO(appt.startTime), "d 'de' MMM, HH:mm", { locale: es })} ha sido cancelado.`;
+                    await sendSystemMessage(
+                      appt.bidId,
+                      systemMsg,
+                      profile.uid,
+                      otherUserId
+                    );
+                  }
+
+                  if (status === 'Completed' && appt && profile) {
+                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
+                    const systemMsg = `✅ El encuentro ha sido marcado como realizado. ¡No olvides calificar la experiencia!`;
                     await sendSystemMessage(
                       appt.bidId,
                       systemMsg,
@@ -2774,6 +2890,10 @@ export default function App() {
                 setView('job-details');
               }}
               onViewProfile={setViewingProfile}
+              onRate={(appt) => {
+                setRatingAppointment(appt);
+                setShowRatingModal(true);
+              }}
             />
           )}
         </AnimatePresence>
@@ -3296,6 +3416,19 @@ export default function App() {
             }}
           />
         )}
+
+        {showRatingModal && ratingAppointment && profile && (
+          <RatingModal 
+            isOpen={showRatingModal}
+            onClose={() => {
+              setShowRatingModal(false);
+              setRatingAppointment(null);
+            }}
+            appointment={ratingAppointment}
+            profile={profile}
+            onSubmit={submitRating}
+          />
+        )}
       </AnimatePresence>
 
       {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[3000] shadow-xl">{error}</div>}
@@ -3550,14 +3683,91 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
   );
 };
 
-const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewProfile }: { 
+const RatingModal = ({ isOpen, onClose, appointment, profile, onSubmit }: { isOpen: boolean, onClose: () => void, appointment: Appointment, profile: UserProfile, onSubmit: (stars: number, comment: string) => void }) => {
+  const [stars, setStars] = useState(5);
+  const [comment, setComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!isOpen) return null;
+
+  const otherUser = appointment.otherUser;
+
+  return (
+    <div className="fixed inset-0 z-[5000] flex justify-center items-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl relative"
+      >
+        <div className="p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-black text-stone-900">Calificar Encuentro</h2>
+            <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+              <X className="w-6 h-6 text-stone-400" />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-20 h-20 rounded-2xl overflow-hidden mb-4 border-2 border-primary/20">
+              <img src={otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+            </div>
+            <h3 className="text-lg font-bold text-stone-900">{otherUser?.displayName}</h3>
+            <p className="text-xs text-stone-500 font-medium">¿Cómo fue tu experiencia?</p>
+          </div>
+
+          <div className="flex justify-center gap-2 mb-8">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <button
+                key={s}
+                onClick={() => setStars(s)}
+                className="p-1 transition-transform active:scale-90"
+              >
+                <Star 
+                  className={cn(
+                    "w-10 h-10 transition-colors",
+                    s <= stars ? "text-yellow-400 fill-yellow-400" : "text-stone-200"
+                  )} 
+                />
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-4 mb-8">
+            <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block">Tu comentario</label>
+            <TextArea 
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Escribe algo sobre el servicio..."
+              className="min-h-[100px]"
+            />
+          </div>
+
+          <Button 
+            onClick={async () => {
+              setIsSubmitting(true);
+              await onSubmit(stars, comment);
+              setIsSubmitting(false);
+            }} 
+            disabled={isSubmitting}
+            className="w-full py-4 rounded-2xl shadow-lg shadow-primary/20"
+          >
+            {isSubmitting ? 'Enviando...' : 'Enviar Calificación'}
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewProfile, onRate }: { 
   appointments: Appointment[], 
   profile: UserProfile | null, 
   onUpdateStatus: (id: string, status: AppointmentStatus) => void,
   onViewJob: (job: Job) => void,
-  onViewProfile: (profile: UserProfile) => void
+  onViewProfile: (profile: UserProfile) => void,
+  onRate: (appt: Appointment) => void
 }) => {
-  const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming'>('upcoming');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming' | 'completed'>('upcoming');
 
   const filteredAppointments = useMemo(() => {
     let filtered = [...appointments];
@@ -3567,6 +3777,8 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
       filtered = filtered.filter(a => a.status === 'Proposed' && a.proposedBy !== profile?.uid);
     } else if (filter === 'upcoming') {
       filtered = filtered.filter(a => a.status === 'Accepted' && parseISO(a.endTime) > now);
+    } else if (filter === 'completed') {
+      filtered = filtered.filter(a => a.status === 'Completed' || (a.status === 'Accepted' && parseISO(a.endTime) <= now));
     }
 
     return filtered.sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime());
@@ -3596,6 +3808,7 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
         {[
           { id: 'upcoming', label: 'Próximos' },
           { id: 'pending', label: 'Pendientes' },
+          { id: 'completed', label: 'Finalizados' },
           { id: 'all', label: 'Todos' }
         ].map(f => (
           <button
@@ -3640,10 +3853,12 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
                         "text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border",
                         appt.status === 'Accepted' ? "bg-green-50 text-green-600 border-green-100" :
                         appt.status === 'Proposed' ? "bg-orange-50 text-orange-600 border-orange-100" :
+                        appt.status === 'Completed' ? "bg-blue-50 text-blue-600 border-blue-100" :
                         "bg-stone-50 text-stone-500 border-stone-100"
                       )}>
                         {appt.status === 'Proposed' ? 'Propuesto' : 
                          appt.status === 'Accepted' ? 'Confirmado' : 
+                         appt.status === 'Completed' ? 'Finalizado' :
                          appt.status === 'Rejected' ? 'Rechazado' : appt.status}
                       </span>
                       <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
@@ -3713,8 +3928,16 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
               )}
 
               {appt.status === 'Accepted' && (
-                <div className="mt-6">
-                  {differenceInHours(parseISO(appt.startTime), new Date()) > 48 ? (
+                <div className="mt-6 space-y-2">
+                  {parseISO(appt.endTime) <= new Date() && (
+                    <Button 
+                      onClick={() => onUpdateStatus(appt.id, 'Completed')}
+                      className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-primary shadow-lg shadow-primary/20"
+                    >
+                      Confirmar Visita Realizada
+                    </Button>
+                  )}
+                  {differenceInHours(parseISO(appt.startTime), new Date()) > 48 && parseISO(appt.endTime) > new Date() && (
                     <Button 
                       variant="ghost"
                       onClick={() => onUpdateStatus(appt.id, 'Cancelled')}
@@ -3722,11 +3945,29 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
                     >
                       Cancelar Encuentro
                     </Button>
-                  ) : (
+                  )}
+                  {differenceInHours(parseISO(appt.startTime), new Date()) <= 48 && parseISO(appt.endTime) > new Date() && (
                     <div className="p-3 bg-red-50 rounded-2xl border border-red-100 text-center">
                       <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest">
                         No se puede cancelar (faltan menos de 48hs)
                       </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {appt.status === 'Completed' && (
+                <div className="mt-6">
+                  {((profile.role === 'client' && !appt.clientRated) || (profile.role === 'professional' && !appt.professionalRated)) ? (
+                    <Button 
+                      onClick={() => onRate(appt)}
+                      className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-yellow-500 hover:bg-yellow-600 text-white shadow-lg shadow-yellow-500/20"
+                    >
+                      Calificar Experiencia
+                    </Button>
+                  ) : (
+                    <div className="p-3 bg-green-50 rounded-2xl border border-green-100 text-center">
+                      <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest">¡Ya calificaste este encuentro!</p>
                     </div>
                   )}
                 </div>
