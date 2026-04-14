@@ -73,7 +73,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatDistanceToNow, format, addHours, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
+import { formatDistanceToNow, format, addHours, isWithinInterval, parseISO, startOfDay, endOfDay, differenceInHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -1305,6 +1305,26 @@ export default function App() {
 
   const deleteChat = async () => {
     if (!bidToDelete) return;
+
+    // Check for appointments
+    const relevantAppointments = appointments.filter(a => 
+      a.bidId === bidToDelete && 
+      (a.status === 'Accepted' || a.status === 'Proposed')
+    );
+    
+    const now = new Date();
+    const hasUpcomingAppointment = relevantAppointments.some(a => {
+      const startTime = parseISO(a.startTime);
+      return a.status === 'Accepted' && differenceInHours(startTime, now) < 48;
+    });
+
+    if (hasUpcomingAppointment) {
+      setError("No puedes cerrar el chat porque tienes un encuentro confirmado en menos de 48 horas.");
+      setBidToDelete(null);
+      setIsDeleting(false);
+      return;
+    }
+
     console.log("Deleting chat:", bidToDelete);
     setIsDeleting(true);
     try {
@@ -1314,7 +1334,19 @@ export default function App() {
       
       const batch = writeBatch(db);
       msgsSnap.docs.forEach(m => batch.delete(m.ref));
-      batch.delete(doc(db, 'bids', bidToDelete));
+
+      // Cancel associated appointments
+      relevantAppointments.forEach(a => {
+        batch.update(doc(db, 'appointments', a.id), { status: 'Cancelled' });
+      });
+
+      // Mark bid as cancelled and not contacted
+      batch.update(doc(db, 'bids', bidToDelete), { 
+        isCancelled: true, 
+        isContacted: false,
+        isReadByClient: true,
+        isReadByProfessional: true
+      });
       
       await batch.commit();
 
@@ -2392,20 +2424,40 @@ export default function App() {
                           </Button>
                         </div>
                       ) : myBids.some(b => b.jobId === selectedJob.id) || (selectedBid && selectedBid.jobId === selectedJob.id) ? (
-                        <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200 text-center">
-                          <CheckCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
-                          <h3 className="font-bold text-lg mb-2 text-orange-900">Ya te postulaste</h3>
-                          <p className="text-orange-700 text-sm mb-6">Ya has enviado un presupuesto para este trabajo. Puedes seguir la conversación desde mensajes.</p>
-                          <Button 
-                            onClick={() => {
-                              const bid = myBids.find(b => b.jobId === selectedJob.id) || selectedBid;
-                              if (bid) openChat(bid);
-                            }} 
-                            className="w-full"
-                          >
-                            Ir al Chat
-                          </Button>
-                        </div>
+                        (() => {
+                          const bid = myBids.find(b => b.jobId === selectedJob.id) || selectedBid;
+                          if (bid?.isCancelled) {
+                            return (
+                              <div className="bg-red-50 p-6 rounded-3xl border border-red-200 text-center">
+                                <X className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                                <h3 className="font-bold text-lg mb-2 text-red-900">Postulación Cancelada</h3>
+                                <p className="text-red-700 text-sm mb-4">Has cancelado tu postulación para este trabajo. No puedes volver a enviarla.</p>
+                                <Button 
+                                  variant="ghost"
+                                  onClick={() => setView('home')}
+                                  className="w-full text-xs font-black uppercase tracking-widest"
+                                >
+                                  Volver al Inicio
+                                </Button>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="bg-orange-50 p-6 rounded-3xl border border-orange-200 text-center">
+                              <CheckCircle className="w-12 h-12 text-orange-500 mx-auto mb-4" />
+                              <h3 className="font-bold text-lg mb-2 text-orange-900">Ya te postulaste</h3>
+                              <p className="text-orange-700 text-sm mb-6">Ya has enviado un presupuesto para este trabajo. Puedes seguir la conversación desde mensajes.</p>
+                              <Button 
+                                onClick={() => {
+                                  if (bid) openChat(bid);
+                                }} 
+                                className="w-full"
+                              >
+                                Ir al Chat
+                              </Button>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl">
                           <h3 className="font-bold text-lg mb-4">Enviar Presupuesto (Postulación)</h3>
@@ -3198,7 +3250,7 @@ function BidsList({ jobId, clientId, onSelectBid, onViewProfile }: { jobId: stri
       const updateId = ++lastUpdateRef.current;
       const bData = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as Bid))
-        .filter(bid => bid.isContacted !== true);
+        .filter(bid => bid.isContacted !== true && bid.isCancelled !== true);
       
       // Mark as read by client if any are unread
       const unreadBids = bData.filter(b => b.isReadByClient === false);
@@ -3553,8 +3605,37 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
               )}
 
               {appt.status === 'Proposed' && appt.proposedBy === profile.uid && (
-                <div className="mt-4 p-3 bg-stone-50 rounded-2xl border border-stone-100 text-center">
-                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Esperando confirmación...</p>
+                <div className="mt-6 flex flex-col gap-2">
+                  <Button 
+                    variant="ghost"
+                    onClick={() => onUpdateStatus(appt.id, 'Cancelled')}
+                    className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 border border-red-100"
+                  >
+                    Cancelar Propuesta
+                  </Button>
+                  <div className="p-3 bg-stone-50 rounded-2xl border border-stone-100 text-center">
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Esperando confirmación...</p>
+                  </div>
+                </div>
+              )}
+
+              {appt.status === 'Accepted' && (
+                <div className="mt-6">
+                  {differenceInHours(parseISO(appt.startTime), new Date()) > 48 ? (
+                    <Button 
+                      variant="ghost"
+                      onClick={() => onUpdateStatus(appt.id, 'Cancelled')}
+                      className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 border border-red-100"
+                    >
+                      Cancelar Encuentro
+                    </Button>
+                  ) : (
+                    <div className="p-3 bg-red-50 rounded-2xl border border-red-100 text-center">
+                      <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest">
+                        No se puede cancelar (faltan menos de 48hs)
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3579,7 +3660,7 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
       const updateId = ++updateRef.current;
       const bData = snapshot.docs
         .map((doc: any) => ({ id: doc.id, ...doc.data() } as Bid))
-        .filter((bid: Bid) => bid.isContacted === true);
+        .filter((bid: Bid) => bid.isContacted === true && bid.isCancelled !== true);
       
       if (bData.length === 0) {
         if (updateId === updateRef.current) {

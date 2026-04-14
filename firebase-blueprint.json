@@ -67,7 +67,8 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "isContacted": { "type": "boolean" },
         "isReadByClient": { "type": "boolean" },
-        "isReadByProfessional": { "type": "boolean" }
+        "isReadByProfessional": { "type": "boolean" },
+        "isCancelled": { "type": "boolean" }
       },
       "required": ["jobId", "clientId", "professionalId", "proposedPrice", "createdAt"]
     },

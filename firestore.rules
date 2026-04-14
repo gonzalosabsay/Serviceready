@@ -91,7 +91,8 @@ service cloud.firestore {
              (!('lastMessageAt' in data) || data.lastMessageAt is string) &&
              (!('isContacted' in data) || data.isContacted is bool) &&
              (!('isReadByClient' in data) || data.isReadByClient is bool) &&
-             (!('isReadByProfessional' in data) || data.isReadByProfessional is bool);
+             (!('isReadByProfessional' in data) || data.isReadByProfessional is bool) &&
+             (!('isCancelled' in data) || data.isCancelled is bool);
     }
 
     function isValidMessage(data) {
