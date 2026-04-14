@@ -73,7 +73,25 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatDistanceToNow, format, addHours, isWithinInterval, parseISO, startOfDay, endOfDay, differenceInHours } from 'date-fns';
+import { 
+  formatDistanceToNow, 
+  format, 
+  addHours, 
+  isWithinInterval, 
+  parseISO, 
+  startOfDay, 
+  endOfDay, 
+  differenceInHours,
+  eachDayOfInterval,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -3759,6 +3777,78 @@ const RatingModal = ({ isOpen, onClose, appointment, profile, onSubmit }: { isOp
   );
 };
 
+const CalendarComponent = ({ selectedDate, onDateSelect, appointments }: { 
+  selectedDate: Date, 
+  onDateSelect: (date: Date) => void,
+  appointments: Appointment[]
+}) => {
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(selectedDate));
+  
+  const days = useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentMonth));
+    const end = endOfWeek(endOfMonth(currentMonth));
+    return eachDayOfInterval({ start, end });
+  }, [currentMonth]);
+
+  const hasAppointment = (date: Date) => {
+    return appointments.some(a => isSameDay(parseISO(a.startTime), date));
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="font-black text-stone-900 uppercase tracking-widest text-xs">
+          {format(currentMonth, 'MMMM yyyy', { locale: es })}
+        </h3>
+        <div className="flex gap-1">
+          <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-stone-50 rounded-full transition-colors hover:text-primary">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 hover:bg-stone-50 rounded-full transition-colors hover:text-primary">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map(d => (
+          <div key={d} className="text-center text-[10px] font-black text-stone-300 py-2">{d}</div>
+        ))}
+      </div>
+      
+      <div className="grid grid-cols-7 gap-1">
+        {days.map(day => {
+          const isSelected = isSameDay(day, selectedDate);
+          const isCurrentMonth = isSameMonth(day, currentMonth);
+          const hasAppt = hasAppointment(day);
+          const isToday = isSameDay(day, new Date());
+          
+          return (
+            <button
+              key={day.toISOString()}
+              onClick={() => onDateSelect(day)}
+              className={cn(
+                "aspect-square rounded-xl flex flex-col items-center justify-center relative transition-all",
+                !isCurrentMonth && "opacity-20",
+                isSelected 
+                  ? "bg-primary text-white shadow-lg shadow-primary/20 scale-110 z-10" 
+                  : isToday 
+                    ? "bg-primary/5 text-primary border border-primary/20"
+                    : "hover:bg-stone-50 text-stone-600"
+              )}
+            >
+              <span className="text-xs font-bold">{format(day, 'd')}</span>
+              {hasAppt && !isSelected && (
+                <div className="absolute bottom-1.5 w-1 h-1 rounded-full bg-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewProfile, onRate }: { 
   appointments: Appointment[], 
   profile: UserProfile | null, 
@@ -3768,23 +3858,31 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
   onRate: (appt: Appointment) => void
 }) => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'upcoming' | 'completed'>('upcoming');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const filteredAppointments = useMemo(() => {
     let filtered = [...appointments];
     const now = new Date();
 
-    if (filter === 'pending') {
-      filtered = filtered.filter(a => a.status === 'Proposed' && a.proposedBy !== profile?.uid);
-    } else if (filter === 'upcoming') {
-      filtered = filtered.filter(a => a.status === 'Accepted' && parseISO(a.endTime) > now);
-    } else if (filter === 'completed') {
-      filtered = filtered.filter(a => a.status === 'Completed' || (a.status === 'Accepted' && parseISO(a.endTime) <= now));
+    if (profile?.role === 'professional' && filter === 'upcoming') {
+      // For professionals in upcoming view, we filter by selected date
+      filtered = filtered.filter(a => a.status === 'Accepted' && isSameDay(parseISO(a.startTime), selectedDate));
+    } else {
+      if (filter === 'pending') {
+        filtered = filtered.filter(a => a.status === 'Proposed' && a.proposedBy !== profile?.uid);
+      } else if (filter === 'upcoming') {
+        filtered = filtered.filter(a => a.status === 'Accepted' && parseISO(a.endTime) > now);
+      } else if (filter === 'completed') {
+        filtered = filtered.filter(a => a.status === 'Completed' || (a.status === 'Accepted' && parseISO(a.endTime) <= now));
+      }
     }
 
     return filtered.sort((a, b) => parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime());
-  }, [appointments, filter, profile]);
+  }, [appointments, filter, profile, selectedDate]);
 
   if (!profile) return null;
+
+  const isProfessional = profile.role === 'professional';
 
   return (
     <motion.div 
@@ -3792,7 +3890,7 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="max-w-4xl mx-auto px-6 py-12 pb-12"
+      className="max-w-6xl mx-auto px-6 py-12 pb-12"
     >
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -3806,7 +3904,7 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
         {[
-          { id: 'upcoming', label: 'Próximos' },
+          { id: 'upcoming', label: isProfessional ? 'Por Día' : 'Próximos' },
           { id: 'pending', label: 'Pendientes' },
           { id: 'completed', label: 'Finalizados' },
           { id: 'all', label: 'Todos' }
@@ -3826,16 +3924,42 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
         ))}
       </div>
 
-      <div className="space-y-4">
-        {filteredAppointments.length === 0 ? (
-          <div className="text-center py-20 bg-stone-50 rounded-[3rem] border border-dashed border-stone-200">
-            <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Calendar className="w-8 h-8 text-stone-300" />
+      <div className={cn(
+        "grid gap-8",
+        isProfessional && filter === 'upcoming' ? "md:grid-cols-[350px_1fr]" : "grid-cols-1"
+      )}>
+        {isProfessional && filter === 'upcoming' && (
+          <div className="space-y-6">
+            <CalendarComponent 
+              selectedDate={selectedDate} 
+              onDateSelect={setSelectedDate} 
+              appointments={appointments.filter(a => a.status === 'Accepted')}
+            />
+            <div className="p-6 bg-stone-50 rounded-[2.5rem] border border-stone-100">
+              <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-2">Resumen del día</h4>
+              <p className="text-sm font-bold text-stone-900">
+                {filteredAppointments.length} {filteredAppointments.length === 1 ? 'encuentro programado' : 'encuentros programados'}
+              </p>
+              <p className="text-xs text-stone-500 mt-1">
+                {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+              </p>
             </div>
-            <p className="text-stone-400 font-bold">No tienes encuentros para mostrar.</p>
           </div>
-        ) : (
-          filteredAppointments.map(appt => (
+        )}
+
+        <div className="space-y-4">
+          {filteredAppointments.length === 0 ? (
+            <div className="text-center py-20 bg-stone-50 rounded-[3rem] border border-dashed border-stone-200 h-full flex flex-col items-center justify-center">
+              <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4">
+                <Calendar className="w-8 h-8 text-stone-300" />
+              </div>
+              <p className="text-stone-400 font-bold">No hay encuentros para esta fecha.</p>
+              {isProfessional && filter === 'upcoming' && (
+                <p className="text-[10px] text-stone-300 uppercase tracking-widest font-black mt-2">Selecciona otro día en el calendario</p>
+              )}
+            </div>
+          ) : (
+            filteredAppointments.map(appt => (
             <div key={appt.id} className="bg-white p-6 rounded-[2.5rem] border border-stone-100 shadow-sm hover:shadow-md transition-all group">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-4">
@@ -3976,8 +4100,9 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
           ))
         )}
       </div>
-    </motion.div>
-  );
+    </div>
+  </motion.div>
+);
 };
 
 function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds, isDeleting }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string>, isDeleting: boolean }) {
