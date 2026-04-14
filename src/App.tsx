@@ -2557,13 +2557,15 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => setShowAppointmentModal(true)}
-                    className="text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 px-3"
-                  >
-                    Agendar
-                  </Button>
+                  {profile?.role === 'professional' && (
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => setShowAppointmentModal(true)}
+                      className="text-primary text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 px-3"
+                    >
+                      Agendar
+                    </Button>
+                  )}
                   {selectedBid.job && (
                     <Button 
                       variant="ghost" 
@@ -2677,6 +2679,39 @@ export default function App() {
               </div>
             </motion.div>
           )}
+
+          {view === 'agenda' && (
+            <AgendaView 
+              appointments={appointments} 
+              profile={profile} 
+              onUpdateStatus={async (apptId, status) => {
+                try {
+                  if (status === 'Cancelled') {
+                    const appt = appointments.find(a => a.id === apptId);
+                    if (appt && appt.status === 'Accepted') {
+                      const now = new Date();
+                      const startTime = parseISO(appt.startTime);
+                      if (differenceInHours(startTime, now) < 48) {
+                        setError("No se puede cancelar un encuentro confirmado con menos de 48 horas de anticipación.");
+                        return;
+                      }
+                    }
+                  }
+                  await updateDoc(doc(db, 'appointments', apptId), { status });
+                } catch (err) {
+                  handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
+                }
+              }}
+              onViewJob={(job) => {
+                setSelectedJob(job);
+                // Find the appointment for this job to show other party info
+                const appt = appointments.find(a => a.jobId === job.id);
+                setSelectedAppointment(appt || null);
+                setView('job-details');
+              }}
+              onViewProfile={setViewingProfile}
+            />
+          )}
         </AnimatePresence>
       </main>
 
@@ -2708,39 +2743,6 @@ export default function App() {
       </nav>
 
       <AnimatePresence>
-        {view === 'agenda' && (
-          <AgendaView 
-            appointments={appointments} 
-            profile={profile} 
-            onUpdateStatus={async (apptId, status) => {
-              try {
-                if (status === 'Cancelled') {
-                  const appt = appointments.find(a => a.id === apptId);
-                  if (appt && appt.status === 'Accepted') {
-                    const now = new Date();
-                    const startTime = parseISO(appt.startTime);
-                    if (differenceInHours(startTime, now) < 48) {
-                      setError("No se puede cancelar un encuentro confirmado con menos de 48 horas de anticipación.");
-                      return;
-                    }
-                  }
-                }
-                await updateDoc(doc(db, 'appointments', apptId), { status });
-              } catch (err) {
-                handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
-              }
-            }}
-            onViewJob={(job) => {
-              setSelectedJob(job);
-              // Find the appointment for this job to show other party info
-              const appt = appointments.find(a => a.jobId === job.id);
-              setSelectedAppointment(appt || null);
-              setView('job-details');
-            }}
-            onViewProfile={setViewingProfile}
-          />
-        )}
-
         {view === 'profile' && (
           <motion.div 
             initial={{ opacity: 0, y: '100%' }}
@@ -3496,9 +3498,11 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
 
   return (
     <motion.div 
+      key="agenda"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-4xl mx-auto px-6 py-12 pb-32"
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-4xl mx-auto px-6 py-12 pb-12"
     >
       <div className="flex items-center justify-between mb-8">
         <div>
