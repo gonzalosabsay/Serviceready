@@ -1365,6 +1365,15 @@ export default function App() {
         reviewedId
       );
 
+      // 5. Inform about chat closure
+      const closureMsg = `ℹ️ El encuentro ha sido completado y calificado. Esta conversación se cerrará automáticamente en 1 hora.`;
+      await sendSystemMessage(
+        ratingAppointment.bidId,
+        closureMsg,
+        profile.uid,
+        reviewedId
+      );
+
       setShowRatingModal(false);
       setRatingAppointment(null);
     } catch (err) {
@@ -2623,7 +2632,11 @@ export default function App() {
                 title="¿Eliminar conversación?"
                 disabled={isDeleting}
               >
-                <p className="text-stone-600 mb-6">Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación.</p>
+                <p className="text-stone-600 mb-6">
+                  {appointments.some(a => a.bidId === bidToDelete && a.status === 'Completed') 
+                    ? "Esta acción eliminará la conversación de tu lista."
+                    : "Esta acción eliminará la conversación de tu lista. Si eres el profesional, esto también retirará tu postulación."}
+                </p>
                 <Button 
                   variant="destructive" 
                   onClick={deleteChat} 
