@@ -1181,17 +1181,6 @@ export default function App() {
         const { latitude, longitude } = position.coords;
         setTempLocation({ lat: latitude, lng: longitude });
         setMapCenter([latitude, longitude]);
-        
-        // Try to get address automatically
-        try {
-          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-          const data = await response.json();
-          if (data.display_name) {
-            setSearchQuery(data.display_name);
-          }
-        } catch (err) {
-          console.error('Reverse geocoding error:', err);
-        }
       }, (error) => {
         console.error('Geolocation error:', error);
       });
@@ -2412,11 +2401,11 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio (dirección o barrio)</label>
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Ubicación del servicio (barrio)</label>
                       <div className="relative">
                         <Input 
                           name="address" 
-                          placeholder="Ingrese dirección o barrio" 
+                          placeholder="Ej: Palermo, Recoleta, etc." 
                           value={searchQuery}
                           onChange={(e) => {
                             setSearchQuery(e.target.value);
