@@ -93,6 +93,8 @@ export interface Appointment {
   proposedBy: string;
   clientRated?: boolean;
   professionalRated?: boolean;
+  clientConfirmedCompletion?: boolean;
+  professionalConfirmedCompletion?: boolean;
   createdAt: string;
   job?: Job;
   otherUser?: UserProfile;

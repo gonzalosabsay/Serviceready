@@ -1365,15 +1365,6 @@ export default function App() {
         reviewedId
       );
 
-      // 5. Inform about chat closure
-      const closureMsg = `ℹ️ El encuentro ha sido completado y calificado. Esta conversación se cerrará automáticamente en 1 hora.`;
-      await sendSystemMessage(
-        ratingAppointment.bidId,
-        closureMsg,
-        profile.uid,
-        reviewedId
-      );
-
       setShowRatingModal(false);
       setRatingAppointment(null);
     } catch (err) {
@@ -2884,24 +2875,41 @@ export default function App() {
                         return;
                       }
                     }
-                  }
-                  await updateDoc(doc(db, 'appointments', apptId), { status });
+                    await updateDoc(doc(db, 'appointments', apptId), { status });
+                  } else if (status === 'Completed' && appt && profile) {
+                    const updateData: any = {};
+                    if (profile.role === 'client') {
+                      updateData.clientConfirmedCompletion = true;
+                    } else {
+                      updateData.professionalConfirmedCompletion = true;
+                    }
 
-                  // Send automatic message if cancelled or completed
+                    const isClientConfirmed = profile.role === 'client' ? true : !!appt.clientConfirmedCompletion;
+                    const isProfConfirmed = profile.role === 'professional' ? true : !!appt.professionalConfirmedCompletion;
+
+                    if (isClientConfirmed && isProfConfirmed) {
+                      updateData.status = 'Completed';
+                    }
+
+                    await updateDoc(doc(db, 'appointments', apptId), updateData);
+
+                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
+                    const systemMsg = `✅ ${profile.displayName} ha confirmado que se realizó la visita.`;
+                    await sendSystemMessage(appt.bidId, systemMsg, profile.uid, otherUserId);
+
+                    if (isClientConfirmed && isProfConfirmed) {
+                      const closureMsg = `ℹ️ Ambos han confirmado la visita. El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
+                      await sendSystemMessage(appt.bidId, closureMsg, profile.uid, otherUserId);
+                    }
+                    return;
+                  } else {
+                    await updateDoc(doc(db, 'appointments', apptId), { status });
+                  }
+
+                  // Send automatic message if cancelled
                   if (status === 'Cancelled' && appt && profile) {
                     const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
                     const systemMsg = `🚫 El encuentro programado para el ${format(parseISO(appt.startTime), "d 'de' MMM, HH:mm", { locale: es })} ha sido cancelado.`;
-                    await sendSystemMessage(
-                      appt.bidId,
-                      systemMsg,
-                      profile.uid,
-                      otherUserId
-                    );
-                  }
-
-                  if (status === 'Completed' && appt && profile) {
-                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
-                    const systemMsg = `✅ El encuentro ha sido marcado como realizado. ¡No olvides calificar la experiencia!`;
                     await sendSystemMessage(
                       appt.bidId,
                       systemMsg,
@@ -3672,6 +3680,7 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
                     onChange={(e) => setDuration(Number(e.target.value))}
                     className="w-full px-4 py-3 rounded-xl bg-stone-50 border border-stone-200 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                   >
+                    <option value={1/60}>1 min (Test)</option>
                     <option value={0.5}>30 min</option>
                     <option value={1}>1 hora</option>
                     <option value={2}>2 horas</option>
@@ -4067,12 +4076,21 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
               {appt.status === 'Accepted' && (
                 <div className="mt-6 space-y-2">
                   {parseISO(appt.endTime) <= new Date() && (
-                    <Button 
-                      onClick={() => onUpdateStatus(appt.id, 'Completed')}
-                      className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-primary shadow-lg shadow-primary/20"
-                    >
-                      Confirmar Visita Realizada
-                    </Button>
+                    <>
+                      {((profile.role === 'client' && !appt.clientConfirmedCompletion) || 
+                        (profile.role === 'professional' && !appt.professionalConfirmedCompletion)) ? (
+                        <Button 
+                          onClick={() => onUpdateStatus(appt.id, 'Completed')}
+                          className="w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-primary shadow-lg shadow-primary/20"
+                        >
+                          Confirmar Visita Realizada
+                        </Button>
+                      ) : (
+                        <div className="p-3 bg-stone-50 rounded-2xl border border-stone-100 text-center">
+                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Esperando confirmación de la otra parte...</p>
+                        </div>
+                      )}
+                    </>
                   )}
                   {differenceInHours(parseISO(appt.startTime), new Date()) > 48 && parseISO(appt.endTime) > new Date() && (
                     <Button 

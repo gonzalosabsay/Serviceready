@@ -118,6 +118,8 @@
         "proposedBy": { "type": "string" },
         "clientRated": { "type": "boolean" },
         "professionalRated": { "type": "boolean" },
+        "clientConfirmedCompletion": { "type": "boolean" },
+        "professionalConfirmedCompletion": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["jobId", "bidId", "clientId", "professionalId", "startTime", "endTime", "status", "proposedBy", "createdAt"]
