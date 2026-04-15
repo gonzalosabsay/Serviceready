@@ -1373,6 +1373,63 @@ export default function App() {
     }
   };
 
+  const handleUpdateAppointmentStatus = async (apptId: string, status: AppointmentStatus) => {
+    if (!profile) return;
+    try {
+      const appt = appointments.find(a => a.id === apptId);
+      if (!appt) return;
+
+      if (status === 'Cancelled') {
+        if (appt.status === 'Accepted') {
+          const now = new Date();
+          const startTime = parseISO(appt.startTime);
+          if (differenceInHours(startTime, now) < 48) {
+            setError("No se puede cancelar un encuentro confirmado con menos de 48 horas de anticipación.");
+            return;
+          }
+        }
+        await updateDoc(doc(db, 'appointments', apptId), { status });
+      } else if (status === 'Completed') {
+        const updateData: any = {};
+        if (profile.role === 'client') {
+          updateData.clientConfirmedCompletion = true;
+        } else {
+          updateData.professionalConfirmedCompletion = true;
+        }
+
+        const isClientConfirmed = profile.role === 'client' ? true : !!appt.clientConfirmedCompletion;
+        const isProfConfirmed = profile.role === 'professional' ? true : !!appt.professionalConfirmedCompletion;
+
+        if (isClientConfirmed && isProfConfirmed) {
+          updateData.status = 'Completed';
+        }
+
+        await updateDoc(doc(db, 'appointments', apptId), updateData);
+
+        const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
+        const systemMsg = `✅ ${profile.displayName} ha confirmado que se realizó la visita.`;
+        await sendSystemMessage(appt.bidId, systemMsg, profile.uid, otherUserId);
+
+        if (isClientConfirmed && isProfConfirmed) {
+          const closureMsg = `ℹ️ Ambos han confirmado la visita. El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
+          await sendSystemMessage(appt.bidId, closureMsg, profile.uid, otherUserId);
+        }
+        return;
+      } else {
+        await updateDoc(doc(db, 'appointments', apptId), { status });
+      }
+
+      // Send automatic message if cancelled
+      if (status === 'Cancelled') {
+        const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
+        const systemMsg = `🚫 El encuentro programado para el ${format(parseISO(appt.startTime), "d 'de' MMM, HH:mm", { locale: es })} ha sido cancelado.`;
+        await sendSystemMessage(appt.bidId, systemMsg, profile.uid, otherUserId);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
+    }
+  };
+
   const deleteJob = async () => {
     if (!selectedJob) return;
     console.log("Deleting job:", selectedJob.id);
@@ -2708,30 +2765,21 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {activeAppointment.status === 'Accepted' && parseISO(activeAppointment.endTime) <= new Date() && (
-                      <Button 
-                        onClick={async () => {
-                          try {
-                            await updateDoc(doc(db, 'appointments', activeAppointment.id), { status: 'Completed' });
-                            
-                            // Send automatic message
-                            if (selectedBid && profile) {
-                              const otherUserId = profile.uid === activeAppointment.clientId ? activeAppointment.professionalId : activeAppointment.clientId;
-                              const systemMsg = `✅ El encuentro ha sido marcado como realizado. ¡No olvides calificar la experiencia!`;
-                              await sendSystemMessage(
-                                selectedBid.id,
-                                systemMsg,
-                                profile.uid,
-                                otherUserId
-                              );
-                            }
-                          } catch (err) {
-                            handleFirestoreError(err, OperationType.UPDATE, `appointments/${activeAppointment.id}`);
-                          }
-                        }}
-                        className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-primary"
-                      >
-                        Confirmar Visita
-                      </Button>
+                      <>
+                        {((profile?.role === 'client' && !activeAppointment.clientConfirmedCompletion) || 
+                          (profile?.role === 'professional' && !activeAppointment.professionalConfirmedCompletion)) ? (
+                          <Button 
+                            onClick={() => handleUpdateAppointmentStatus(activeAppointment.id, 'Completed')}
+                            className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-primary"
+                          >
+                            Confirmar Visita
+                          </Button>
+                        ) : (
+                          <div className="px-3 py-1.5 bg-stone-100 rounded-lg border border-stone-200">
+                            <p className="text-[8px] font-bold text-stone-500 uppercase tracking-widest">Esperando confirmación...</p>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {activeAppointment.status === 'Completed' && (
@@ -2863,64 +2911,7 @@ export default function App() {
             <AgendaView 
               appointments={appointments} 
               profile={profile} 
-              onUpdateStatus={async (apptId, status) => {
-                try {
-                  const appt = appointments.find(a => a.id === apptId);
-                  if (status === 'Cancelled') {
-                    if (appt && appt.status === 'Accepted') {
-                      const now = new Date();
-                      const startTime = parseISO(appt.startTime);
-                      if (differenceInHours(startTime, now) < 48) {
-                        setError("No se puede cancelar un encuentro confirmado con menos de 48 horas de anticipación.");
-                        return;
-                      }
-                    }
-                    await updateDoc(doc(db, 'appointments', apptId), { status });
-                  } else if (status === 'Completed' && appt && profile) {
-                    const updateData: any = {};
-                    if (profile.role === 'client') {
-                      updateData.clientConfirmedCompletion = true;
-                    } else {
-                      updateData.professionalConfirmedCompletion = true;
-                    }
-
-                    const isClientConfirmed = profile.role === 'client' ? true : !!appt.clientConfirmedCompletion;
-                    const isProfConfirmed = profile.role === 'professional' ? true : !!appt.professionalConfirmedCompletion;
-
-                    if (isClientConfirmed && isProfConfirmed) {
-                      updateData.status = 'Completed';
-                    }
-
-                    await updateDoc(doc(db, 'appointments', apptId), updateData);
-
-                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
-                    const systemMsg = `✅ ${profile.displayName} ha confirmado que se realizó la visita.`;
-                    await sendSystemMessage(appt.bidId, systemMsg, profile.uid, otherUserId);
-
-                    if (isClientConfirmed && isProfConfirmed) {
-                      const closureMsg = `ℹ️ Ambos han confirmado la visita. El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
-                      await sendSystemMessage(appt.bidId, closureMsg, profile.uid, otherUserId);
-                    }
-                    return;
-                  } else {
-                    await updateDoc(doc(db, 'appointments', apptId), { status });
-                  }
-
-                  // Send automatic message if cancelled
-                  if (status === 'Cancelled' && appt && profile) {
-                    const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
-                    const systemMsg = `🚫 El encuentro programado para el ${format(parseISO(appt.startTime), "d 'de' MMM, HH:mm", { locale: es })} ha sido cancelado.`;
-                    await sendSystemMessage(
-                      appt.bidId,
-                      systemMsg,
-                      profile.uid,
-                      otherUserId
-                    );
-                  }
-                } catch (err) {
-                  handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
-                }
-              }}
+              onUpdateStatus={handleUpdateAppointmentStatus}
               onViewJob={(job) => {
                 setSelectedJob(job);
                 // Find the appointment for this job to show other party info
