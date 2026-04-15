@@ -1,5 +1,5 @@
 {
-  "name": "ServiceReady",
+  "name": "resolve.la",
   "description": "Plataforma de licitación de oficios que conecta clientes con profesionales mediante un modelo de postulación y presupuesto libre.",
   "requestFramePermissions": ["camera", "geolocation"]
 }

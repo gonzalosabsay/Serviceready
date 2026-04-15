@@ -395,6 +395,10 @@ export default function App() {
     );
   }, [appointments, selectedBid, profile]);
 
+  const isChatClosed = useMemo(() => {
+    return appointments.some(a => a.bidId === selectedBid?.id && a.status === 'Completed');
+  }, [appointments, selectedBid]);
+
   const [displayMode, setDisplayMode] = useState<'list' | 'map'>('list');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -710,7 +714,37 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [selectedBid, view, profile]);
+  }, [selectedBid?.id, view, profile]);
+
+  // Bid Listener (to keep selectedBid reactive)
+  useEffect(() => {
+    if (!selectedBid || view !== 'chat') return;
+    const unsub = onSnapshot(doc(db, 'bids', selectedBid.id), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as Bid;
+        setSelectedBid(prev => prev ? { ...prev, ...data } : null);
+      }
+    });
+    return unsub;
+  }, [selectedBid?.id, view]);
+
+  // Auto-exit chat after 1 hour of closure
+  useEffect(() => {
+    if (view === 'chat' && selectedBid?.closedAt) {
+      const closedTime = new Date(selectedBid.closedAt).getTime();
+      const checkClosure = () => {
+        const now = Date.now();
+        if (now - closedTime >= 3600000) {
+          setView('messages');
+          setSelectedBid(null);
+        }
+      };
+      
+      checkClosure();
+      const timer = setInterval(checkClosure, 60000); // Check every minute
+      return () => clearInterval(timer);
+    }
+  }, [view, selectedBid?.closedAt]);
 
   // Unread Messages Listener
   useEffect(() => {
@@ -1402,6 +1436,10 @@ export default function App() {
 
         if (isClientConfirmed && isProfConfirmed) {
           updateData.status = 'Completed';
+          // Also update job status to Completed
+          await updateDoc(doc(db, 'jobs', appt.jobId), { status: 'Completed' });
+          // Set closedAt on the bid for the 1-hour auto-close logic
+          await updateDoc(doc(db, 'bids', appt.bidId), { closedAt: new Date().toISOString() });
         }
 
         await updateDoc(doc(db, 'appointments', apptId), updateData);
@@ -1672,7 +1710,7 @@ export default function App() {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-50">
         <div className="w-16 h-16 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-zinc-500 font-medium animate-pulse">ServiceReady está cargando...</p>
+        <p className="text-zinc-500 font-medium animate-pulse">resolve.la está cargando...</p>
       </div>
     );
   }
@@ -1821,7 +1859,7 @@ export default function App() {
           <div className="w-20 h-20 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto mb-8">
             <Briefcase className="w-10 h-10 text-orange-600" />
           </div>
-          <h1 className="text-4xl font-bold text-zinc-900 mb-2 tracking-tight">ServiceReady</h1>
+          <h1 className="text-4xl font-bold text-zinc-900 mb-2 tracking-tight">resolve.la</h1>
           <p className="text-zinc-500 mb-8 text-lg">Conecta con los mejores profesionales de oficios en tu zona.</p>
           
           <form onSubmit={handleEmailAuth} className="space-y-4 mb-6 text-left">
@@ -2005,7 +2043,7 @@ export default function App() {
           <div className="w-9 h-9 lg:w-16 lg:h-16 bg-primary rounded-xl lg:rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-110 transition-transform">
             <Briefcase className="w-4.5 h-4.5 lg:w-9 lg:h-9 text-white" />
           </div>
-          <h1 className="text-lg lg:text-3xl font-black tracking-tight text-stone-900">ServiceReady</h1>
+          <h1 className="text-lg lg:text-3xl font-black tracking-tight text-stone-900">resolve.la</h1>
         </div>
         <div className="flex items-center gap-2 lg:gap-8 min-w-0">
           <div className="flex items-center gap-2 lg:gap-6 bg-stone-100/50 p-1.5 lg:p-3 rounded-2xl border border-stone-200/60 min-w-0">
@@ -2111,7 +2149,7 @@ export default function App() {
                       )}
                       {profile?.role === 'client' && (
                         <Button id="new-job-button" onClick={() => setView('create-job')} className="flex items-center gap-2">
-                          <Plus className="w-5 h-5" /> Nuevo Trabajo
+                          <Plus className="w-5 h-5" /> ¿Qué Necesitás?
                         </Button>
                       )}
                     </div>
@@ -2329,7 +2367,7 @@ export default function App() {
                       <ChevronLeft className="w-6 h-6 text-stone-600" />
                     </Button>
                     <div>
-                      <h2 className="text-2xl font-bold text-stone-900">Publicar Trabajo</h2>
+                      <h2 className="text-2xl font-bold text-stone-900">Pedir Presupuesto</h2>
                       <p className="text-stone-500 text-sm">Describe lo que necesitas para recibir presupuestos.</p>
                     </div>
                   </div>
@@ -2338,7 +2376,7 @@ export default function App() {
                     <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
                     
                     <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Título del trabajo</label>
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">¿Qué hay que hacer?</label>
                       <Input name="title" placeholder="Ej: Plomero para arreglar filtración en cocina" required className="text-lg font-medium" />
                     </div>
                     
@@ -2724,7 +2762,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {profile?.role === 'professional' && (
+                  {profile?.role === 'professional' && !activeAppointment && !isChatClosed && (
                     <Button 
                       variant="ghost" 
                       onClick={() => setShowAppointmentModal(true)}
@@ -2890,14 +2928,14 @@ export default function App() {
                 <form onSubmit={sendMessage} className="max-w-4xl mx-auto flex gap-2">
                   <Input 
                     name="message" 
-                    placeholder={isSending ? "Enviando..." : "Escribe un mensaje..."}
+                    placeholder={isChatClosed ? "Conversación cerrada" : (isSending ? "Enviando..." : "Escribe un mensaje...")}
                     autoComplete="off" 
-                    disabled={isSending}
+                    disabled={isSending || isChatClosed}
                     className="rounded-2xl bg-white border-border focus:ring-primary/10"
                   />
                   <Button 
                     type="submit" 
-                    disabled={isSending}
+                    disabled={isSending || isChatClosed}
                     className="p-3 rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-transform"
                   >
                     <Send className={cn("w-5 h-5", isSending && "animate-pulse")} />
@@ -4130,9 +4168,15 @@ const AgendaView = ({ appointments, profile, onUpdateStatus, onViewJob, onViewPr
 function ConversationsList({ profile, onSelectConversation, onDeleteChat, unreadBidIds, isDeleting }: { profile: UserProfile | null, onSelectConversation: (bid: Bid) => void, onDeleteChat: (bidId: string) => void, unreadBidIds: Set<string>, isDeleting: boolean }) {
   const [profBids, setProfBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
   const [clientBids, setClientBids] = useState<(Bid & { otherUser?: UserProfile, job?: Job })[]>([]);
+  const [now, setNow] = useState(Date.now());
   const lastUpdateProfRef = useRef(0);
   const lastUpdateClientRef = useRef(0);
   const cacheRef = useRef<{ users: Record<string, UserProfile>, jobs: Record<string, Job> }>({ users: {}, jobs: {} });
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!profile) return;
@@ -4212,8 +4256,16 @@ function ConversationsList({ profile, onSelectConversation, onDeleteChat, unread
   const conversations = useMemo(() => {
     const combined = [...profBids, ...clientBids];
     const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-    return unique.sort((a, b) => new Date(b.lastMessageAt || b.createdAt).getTime() - new Date(a.lastMessageAt || a.createdAt).getTime());
-  }, [profBids, clientBids]);
+    
+    // Filter out chats that have been closed for more than 1 hour
+    const filtered = unique.filter(bid => {
+      if (!bid.closedAt) return true;
+      const closedTime = new Date(bid.closedAt).getTime();
+      return now - closedTime < 3600000; // 1 hour in ms
+    });
+
+    return filtered.sort((a, b) => new Date(b.lastMessageAt || b.createdAt).getTime() - new Date(a.lastMessageAt || a.createdAt).getTime());
+  }, [profBids, clientBids, now]);
 
   if (conversations.length === 0) return (
     <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-border flex flex-col items-center justify-center">

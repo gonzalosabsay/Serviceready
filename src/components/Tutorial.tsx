@@ -37,8 +37,8 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
       icon: <Layout className="w-8 h-8 text-primary" />
     },
     {
-      title: "Publicar un Trabajo",
-      description: "Haz clic en 'Nuevo Trabajo' para empezar. Deberás elegir una categoría, poner un título claro y describir lo que necesitas.",
+      title: "Pedir Presupuesto",
+      description: "Haz clic en '¿Qué Necesitás?' para empezar. Deberás elegir una categoría, poner un título claro y describir lo que necesitas.",
       targetId: "new-job-button",
       icon: <Plus className="w-8 h-8 text-primary" />
     },

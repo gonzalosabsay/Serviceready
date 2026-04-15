@@ -57,6 +57,7 @@ export interface Bid {
   isReadByClient?: boolean;
   isReadByProfessional?: boolean;
   isCancelled?: boolean;
+  closedAt?: string;
 }
 
 export interface Message {
