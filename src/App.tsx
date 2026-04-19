@@ -32,6 +32,7 @@ import {
   writeBatch,
   updateDoc
 } from 'firebase/firestore';
+import { GoogleGenAI } from "@google/genai";
 import { auth, db } from './firebase';
 import { Tutorial } from './components/Tutorial';
 import { Button } from './components/ui/button';
@@ -71,6 +72,8 @@ import {
   Calendar,
   X,
   HelpCircle,
+  Sparkles,
+  Wand2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -380,6 +383,7 @@ export default function App() {
   const [selectedBid, setSelectedBid] = useState<any | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
+  const [clientBids, setClientBids] = useState<Bid[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
@@ -434,6 +438,8 @@ export default function App() {
   const [unreadBidsCount, setUnreadBidsCount] = useState(0);
   const [unreadContactedCount, setUnreadContactedCount] = useState(0);
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
+  const [aiBudget, setAiBudget] = useState<any | null>(null);
+  const [isAiEstimating, setIsAiEstimating] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -620,6 +626,24 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const b = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
       setMyBids(b);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'bids');
+    });
+
+    return unsubscribe;
+  }, [profile]);
+
+  // Client Bids Listener (to see applicants on my jobs)
+  useEffect(() => {
+    if (!profile || profile.role !== 'client') {
+      setClientBids([]);
+      return;
+    }
+    
+    const q = query(collection(db, 'bids'), where('clientId', '==', profile.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const b = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bid));
+      setClientBids(b);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'bids');
     });
@@ -1191,8 +1215,64 @@ export default function App() {
   useEffect(() => {
     if (view === 'create-job') {
       handleGetCurrentLocation();
+      setAiBudget(null);
     }
   }, [view]);
+
+  const getAiSuggestedBudget = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const form = (e.target as HTMLElement).closest('form') as HTMLFormElement;
+    if (!form) return;
+    
+    const title = (form.querySelector('input[name="title"]') as HTMLInputElement)?.value;
+    const description = (form.querySelector('textarea[name="description"]') as HTMLTextAreaElement)?.value;
+    const category = (form.querySelector('select[name="category"]') as HTMLSelectElement)?.value;
+
+    if (!description || description.length < 10) {
+      setError("Por favor, describe mejor lo que necesitas para obtener un presupuesto sugerido.");
+      return;
+    }
+
+    setIsAiEstimating(true);
+    setAiBudget(null);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Eres un experto en presupuestos de servicios para el hogar en Argentina. Proporciona una estimación de costos detallada para el siguiente pedido:
+        Título: ${title}
+        Categoría: ${category}
+        Descripción: ${description}
+        
+        Tu respuesta debe ser exclusivamente en formato JSON estructurado.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              minLabor: { type: "number", description: "Costo mínimo de mano de obra en ARS" },
+              maxLabor: { type: "number", description: "Costo máximo de mano de obra en ARS" },
+              avgLabor: { type: "number", description: "Costo promedio de mano de obra en ARS" },
+              minMaterials: { type: "number", description: "Costo mínimo de materiales en ARS (0 si no aplica)" },
+              maxMaterials: { type: "number", description: "Costo máximo de materiales en ARS (0 si no aplica)" },
+              avgMaterials: { type: "number", description: "Costo promedio de materiales en ARS (0 si no aplica)" },
+              explanation: { type: "string", description: "Breve explicación de por qué este rango" }
+            },
+            required: ["minLabor", "maxLabor", "avgLabor", "minMaterials", "maxMaterials", "avgMaterials", "explanation"]
+          }
+        }
+      });
+      
+      const result = JSON.parse(response.text || '{}');
+      setAiBudget(result);
+    } catch (err) {
+      console.error("AI estimation error:", err);
+      setError("No pudimos obtener el presupuesto sugerido en este momento.");
+    } finally {
+      setIsAiEstimating(false);
+    }
+  };
 
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -2260,6 +2340,20 @@ export default function App() {
                             <span className="text-[7px] lg:text-[10px] font-black text-primary bg-primary/10 px-1.5 lg:px-4 py-0.5 lg:py-1.5 rounded-full uppercase tracking-wider lg:tracking-[0.15em]">
                               {job.category}
                             </span>
+                            {profile?.role === 'client' && (() => {
+                              const jobBids = clientBids.filter(b => b.jobId === job.id && b.isContacted !== true && b.isCancelled !== true);
+                              const unreadBids = jobBids.filter(b => !b.isReadByClient);
+                              if (jobBids.length > 0) {
+                                return (
+                                  <Badge variant={unreadBids.length > 0 ? 'primary' : 'secondary'} className="px-1.5 lg:px-4 py-0.5 lg:py-1.5 text-[7px] lg:text-[10px] font-bold flex items-center gap-1 lg:gap-1.5">
+                                    <UserIcon className="w-2 lg:w-3.5 h-2 lg:h-3.5" /> 
+                                    {jobBids.length} {jobBids.length === 1 ? 'POSTULANTE' : 'POSTULANTES'}
+                                    {unreadBids.length > 0 && <span className="w-1 lg:w-1.5 h-1 lg:h-1.5 bg-white rounded-full animate-pulse ml-0.5 lg:ml-1" />}
+                                  </Badge>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           
                           <h3 className="font-bold text-base lg:text-3xl text-stone-900 group-hover:text-primary transition-colors leading-tight mb-1 lg:mb-4 max-w-[95%] lg:max-w-[90%]">{job.title}</h3>
@@ -2382,9 +2476,110 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
-                      <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" maxLength={500} />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
+                        <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" maxLength={500} />
+                      </div>
+                      
+                      <div className="flex flex-col gap-3">
+                        <button 
+                          type="button"
+                          onClick={getAiSuggestedBudget}
+                          disabled={isAiEstimating}
+                          className="flex items-center gap-2 self-start px-4 py-2 bg-primary/5 hover:bg-primary/10 text-primary rounded-xl text-xs font-bold uppercase tracking-widest transition-all border border-primary/20 disabled:opacity-50"
+                        >
+                          {isAiEstimating ? (
+                            <Sparkles className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="w-4 h-4" />
+                          )}
+                          {isAiEstimating ? 'Calculando...' : 'Ver presupuesto sugerido por la IA'}
+                        </button>
+
+                        <AnimatePresence>
+                          {aiBudget && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="bg-white border-2 border-stone-100 rounded-3xl shadow-2xl overflow-hidden font-mono text-[10px] leading-tight mt-2"
+                            >
+                              <div className="bg-stone-50 px-5 py-4 border-b border-dashed border-stone-200 flex justify-between items-center">
+                                <div className="flex flex-col">
+                                  <span className="font-black uppercase tracking-[0.2em] text-primary">PRESUPUESTO IA</span>
+                                  <span className="text-[8px] text-stone-400 mt-0.5 tracking-widest uppercase">Referencia Informativa</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-stone-300 font-bold">#RESOLVE-{Math.floor(Math.random() * 100000)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="p-6 space-y-6">
+                                {/* Labor Section */}
+                                <div className="space-y-2">
+                                  <div className="flex justify-between font-black text-stone-800 uppercase tracking-wider border-b border-stone-100 pb-1">
+                                    <span>CONCEPTO: MANO DE OBRA</span>
+                                    <span>ARS</span>
+                                  </div>
+                                  <div className="flex justify-between text-stone-400 font-bold italic">
+                                    <span>Rango Est. Mercado</span>
+                                    <span>${aiBudget.minLabor?.toLocaleString()} - ${aiBudget.maxLabor?.toLocaleString()}</span>
+                                  </div>
+                                  <div className="flex justify-between text-primary font-black text-xs border-t border-dotted border-stone-200 pt-2 mt-1">
+                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3" /> PROMEDIO SUGERIDO</span>
+                                    <span>${aiBudget.avgLabor?.toLocaleString()}</span>
+                                  </div>
+                                </div>
+
+                                {/* Materials Section */}
+                                {aiBudget.avgMaterials > 0 && (
+                                  <div className="space-y-2">
+                                    <div className="flex justify-between font-black text-stone-800 uppercase tracking-wider border-b border-stone-100 pb-1">
+                                      <span>CONCEPTO: MATERIALES</span>
+                                      <span>ARS</span>
+                                    </div>
+                                    <div className="flex justify-between text-stone-400 font-bold italic">
+                                      <span>Rango Est. Mercado</span>
+                                      <span>${aiBudget.minMaterials?.toLocaleString()} - ${aiBudget.maxMaterials?.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between text-stone-700 font-black text-xs border-t border-dotted border-stone-200 pt-2 mt-1">
+                                      <span>PROMEDIO SUGERIDO</span>
+                                      <span>${aiBudget.avgMaterials?.toLocaleString()}</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Total Section */}
+                                <div className="pt-4 border-t-2 border-dashed border-stone-100 flex justify-between items-end">
+                                  <div className="space-y-1.5">
+                                    <span className="block text-stone-400 font-black uppercase text-[8px] tracking-[0.2em]">TOTAL ESTIMADO</span>
+                                    <span className="text-3xl font-black text-stone-900 tracking-tighter leading-none">
+                                      ${((aiBudget.avgLabor || 0) + (aiBudget.avgMaterials || 0)).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="flex items-center gap-1 text-primary animate-pulse">
+                                      <Sparkles className="w-4 h-4" />
+                                      <span className="text-[8px] font-black uppercase tracking-widest">Optimizado</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mt-2">
+                                  <p className="text-stone-500 leading-relaxed italic lowercase first-letter:uppercase text-[9px] font-medium">
+                                    "{aiBudget.explanation}"
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="bg-stone-900 text-white/40 px-5 py-3 text-[7px] text-center uppercase tracking-[0.4em] font-black">
+                                Resolve.la • No constituye una oferta legal • Basado en IA
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
