@@ -35,6 +35,7 @@ import {
 import { GoogleGenAI } from "@google/genai";
 import { auth, db } from './firebase';
 import { Tutorial } from './components/Tutorial';
+import { AiBudgetInvoice } from './components/AiBudgetInvoice';
 import { Button } from './components/ui/button';
 import { 
   UserProfile, 
@@ -74,6 +75,7 @@ import {
   HelpCircle,
   Sparkles,
   Wand2,
+  CreditCard,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -442,6 +444,11 @@ export default function App() {
   const [isAiEstimating, setIsAiEstimating] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
+  const [showPriceConfirmModal, setShowPriceConfirmModal] = useState(false);
+  const [priceConfirmAppointment, setPriceConfirmAppointment] = useState<Appointment | null>(null);
+  const [inputFinalPrice, setInputFinalPrice] = useState<string>('');
+  const [showClientPaymentModal, setShowClientPaymentModal] = useState(false);
+  const [paymentAppointment, setPaymentAppointment] = useState<Appointment | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const categoriesRef = useRef<HTMLDivElement>(null);
   const jobRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -1300,6 +1307,7 @@ export default function App() {
         address: formData.get('address') as string,
       },
       createdAt: new Date().toISOString(),
+      aiBudget: aiBudget || null,
     };
 
     try {
@@ -1504,9 +1512,20 @@ export default function App() {
       } else if (status === 'Completed') {
         const updateData: any = {};
         if (profile.role === 'client') {
-          updateData.clientConfirmedCompletion = true;
+          if (!appt.professionalConfirmedPrice) {
+            setError("Debes esperar a que el profesional confirme primero el precio final de la visita.");
+            return;
+          }
+          setPaymentAppointment(appt);
+          setShowClientPaymentModal(true);
+          return;
         } else {
-          updateData.professionalConfirmedCompletion = true;
+          // Professionals should use handlePriceConfirmation
+          setPriceConfirmAppointment(appt);
+          const relatedBid = myBids.find(b => b.id === appt.bidId) || clientBids.find(b => b.id === appt.bidId);
+          setInputFinalPrice(relatedBid?.proposedPrice.toString() || '');
+          setShowPriceConfirmModal(true);
+          return;
         }
 
         const isClientConfirmed = profile.role === 'client' ? true : !!appt.clientConfirmedCompletion;
@@ -1523,11 +1542,16 @@ export default function App() {
         await updateDoc(doc(db, 'appointments', apptId), updateData);
 
         const otherUserId = profile.uid === appt.clientId ? appt.professionalId : appt.clientId;
-        const systemMsg = `✅ ${profile.displayName} ha confirmado que se realizó la visita.`;
+        const currentFinalPrice = updateData.finalPrice || appt.finalPrice;
+        const currentCommission = updateData.commissionAmount || appt.commissionAmount;
+
+        const systemMsg = profile.role === 'client' 
+          ? `✅ ${profile.displayName} ha confirmado el pago de $${currentFinalPrice?.toLocaleString()} y finalizado la visita.`
+          : `✅ ${profile.displayName} ha confirmado que se realizó la visita.`;
         await sendSystemMessage(appt.bidId, systemMsg, profile.uid, otherUserId);
 
         if (isClientConfirmed && isProfConfirmed) {
-          const closureMsg = `ℹ️ Ambos han confirmado la visita. El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
+          const closureMsg = `ℹ️ Ambos han confirmado la visita. Pago total: $${currentFinalPrice?.toLocaleString()} (Comisión Resolve: $${currentCommission?.toLocaleString()}). El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
           await sendSystemMessage(appt.bidId, closureMsg, profile.uid, otherUserId);
         }
         return;
@@ -1543,6 +1567,65 @@ export default function App() {
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `appointments/${apptId}`);
+    }
+  };
+
+  const handlePriceConfirmation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !priceConfirmAppointment) return;
+    const finalPrice = parseFloat(inputFinalPrice);
+    if (isNaN(finalPrice) || finalPrice <= 0) {
+      setError("Por favor ingresa un precio válido.");
+      return;
+    }
+
+    try {
+      const updateData: any = {
+        finalPrice,
+        commissionAmount: finalPrice * 0.1,
+        professionalConfirmedCompletion: true,
+        professionalConfirmedPrice: true
+      };
+
+      await updateDoc(doc(db, 'appointments', priceConfirmAppointment.id), updateData);
+      
+      const otherUserId = priceConfirmAppointment.clientId;
+      const systemMsg = `✅ ${profile.displayName} ha confirmado la realización de la visita e indicado un precio final de $${finalPrice.toLocaleString()}. El servicio está pendiente de tu confirmación y pago.`;
+      await sendSystemMessage(priceConfirmAppointment.bidId, systemMsg, profile.uid, otherUserId);
+
+      setShowPriceConfirmModal(false);
+      setPriceConfirmAppointment(null);
+      setInputFinalPrice('');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${priceConfirmAppointment.id}`);
+    }
+  };
+
+  const handleClientPayment = async () => {
+    if (!profile || !paymentAppointment) return;
+    try {
+      const updateData: any = {
+        clientConfirmedCompletion: true,
+        clientConfirmedPrice: true,
+        paymentStatus: 'Paid',
+        status: 'Completed'
+      };
+
+      await updateDoc(doc(db, 'appointments', paymentAppointment.id), updateData);
+      await updateDoc(doc(db, 'jobs', paymentAppointment.jobId), { status: 'Completed' });
+      await updateDoc(doc(db, 'bids', paymentAppointment.bidId), { closedAt: new Date().toISOString() });
+
+      const otherUserId = paymentAppointment.professionalId;
+      const systemMsg = `✅ ${profile.displayName} ha confirmado el pago de $${paymentAppointment.finalPrice?.toLocaleString()} y finalizado la visita.`;
+      await sendSystemMessage(paymentAppointment.bidId, systemMsg, profile.uid, otherUserId);
+
+      const closureMsg = `ℹ️ Ambos han confirmado la visita. Pago total: $${paymentAppointment.finalPrice?.toLocaleString()} (Comisión Resolve: $${paymentAppointment.commissionAmount?.toLocaleString()}). El encuentro ha sido marcado como realizado. Esta conversación se cerrará automáticamente en 1 hora. ¡No olviden calificar la experiencia!`;
+      await sendSystemMessage(paymentAppointment.bidId, closureMsg, profile.uid, otherUserId);
+
+      setShowClientPaymentModal(false);
+      setPaymentAppointment(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${paymentAppointment.id}`);
     }
   };
 
@@ -2508,84 +2591,7 @@ export default function App() {
 
                         <AnimatePresence>
                           {aiBudget && (
-                            <motion.div 
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="bg-white border-2 border-stone-100 rounded-3xl shadow-2xl overflow-hidden font-mono text-[10px] leading-tight mt-2"
-                            >
-                              <div className="bg-stone-50 px-5 py-4 border-b border-dashed border-stone-200 flex justify-between items-center">
-                                <div className="flex flex-col">
-                                  <span className="font-black uppercase tracking-[0.2em] text-primary">PRESUPUESTO IA</span>
-                                  <span className="text-[8px] text-stone-400 mt-0.5 tracking-widest uppercase">Referencia Informativa</span>
-                                </div>
-                                <div className="text-right">
-                                  <span className="text-stone-300 font-bold">#RESOLVE-{Math.floor(Math.random() * 100000)}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="p-6 space-y-6">
-                                {/* Labor Section */}
-                                <div className="space-y-2">
-                                  <div className="flex justify-between font-black text-stone-800 uppercase tracking-wider border-b border-stone-100 pb-1">
-                                    <span>CONCEPTO: MANO DE OBRA</span>
-                                    <span>ARS</span>
-                                  </div>
-                                  <div className="flex justify-between text-stone-400 font-bold italic">
-                                    <span>Rango Est. Mercado</span>
-                                    <span>${aiBudget.minLabor?.toLocaleString()} - ${aiBudget.maxLabor?.toLocaleString()}</span>
-                                  </div>
-                                  <div className="flex justify-between text-primary font-black text-xs border-t border-dotted border-stone-200 pt-2 mt-1">
-                                    <span className="flex items-center gap-1.5"><Wand2 className="w-3 h-3" /> PROMEDIO SUGERIDO</span>
-                                    <span>${aiBudget.avgLabor?.toLocaleString()}</span>
-                                  </div>
-                                </div>
-
-                                {/* Materials Section */}
-                                {aiBudget.avgMaterials > 0 && (
-                                  <div className="space-y-2">
-                                    <div className="flex justify-between font-black text-stone-800 uppercase tracking-wider border-b border-stone-100 pb-1">
-                                      <span>CONCEPTO: MATERIALES</span>
-                                      <span>ARS</span>
-                                    </div>
-                                    <div className="flex justify-between text-stone-400 font-bold italic">
-                                      <span>Rango Est. Mercado</span>
-                                      <span>${aiBudget.minMaterials?.toLocaleString()} - ${aiBudget.maxMaterials?.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-stone-700 font-black text-xs border-t border-dotted border-stone-200 pt-2 mt-1">
-                                      <span>PROMEDIO SUGERIDO</span>
-                                      <span>${aiBudget.avgMaterials?.toLocaleString()}</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Total Section */}
-                                <div className="pt-4 border-t-2 border-dashed border-stone-100 flex justify-between items-end">
-                                  <div className="space-y-1.5">
-                                    <span className="block text-stone-400 font-black uppercase text-[8px] tracking-[0.2em]">TOTAL ESTIMADO</span>
-                                    <span className="text-3xl font-black text-stone-900 tracking-tighter leading-none">
-                                      ${((aiBudget.avgLabor || 0) + (aiBudget.avgMaterials || 0)).toLocaleString()}
-                                    </span>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="flex items-center gap-1 text-primary animate-pulse">
-                                      <Sparkles className="w-4 h-4" />
-                                      <span className="text-[8px] font-black uppercase tracking-widest">Optimizado</span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 mt-2">
-                                  <p className="text-stone-500 leading-relaxed italic lowercase first-letter:uppercase text-[9px] font-medium">
-                                    "{aiBudget.explanation}"
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="bg-stone-900 text-white/40 px-5 py-3 text-[7px] text-center uppercase tracking-[0.4em] font-black">
-                                Resolve.la • No constituye una oferta legal • Basado en IA
-                              </div>
-                            </motion.div>
+                            <AiBudgetInvoice budget={aiBudget} />
                           )}
                         </AnimatePresence>
                       </div>
@@ -2739,6 +2745,21 @@ export default function App() {
                       <MapPin className="w-4 h-4" /> {selectedJob.location.address}
                     </div>
                     <p className="text-zinc-700 leading-relaxed mb-8">{selectedJob.description}</p>
+                    
+                    {selectedJob.clientId === profile?.uid && selectedJob.aiBudget && (
+                      <div className="mt-8 pt-8 border-t border-zinc-100">
+                        <h3 className="text-sm font-black text-stone-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-primary" /> Sugerencia de Resolve AI
+                        </h3>
+                        <div className="max-w-md">
+                          <AiBudgetInvoice budget={selectedJob.aiBudget} />
+                        </div>
+                        <p className="text-[10px] text-stone-400 mt-4 leading-relaxed italic">
+                          Esta información es privada y solo tú puedes verla. Te sirve como referencia para comparar con las postulaciones que recibas.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 text-zinc-400 text-sm">
                       <Clock className="w-4 h-4" /> {formatDistanceToNow(new Date(selectedJob.createdAt), { addSuffix: true, locale: es })}
                     </div>
@@ -2989,9 +3010,17 @@ export default function App() {
                          activeAppointment.status === 'Accepted' ? 'Encuentro confirmado' : 
                          'Encuentro finalizado'}
                       </p>
-                      <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest">
-                        {format(parseISO(activeAppointment.startTime), "d 'de' MMM, HH:mm", { locale: es })}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest leading-none">
+                          {format(parseISO(activeAppointment.startTime), "d 'de' MMM, HH:mm", { locale: es })}
+                        </p>
+                        {activeAppointment.finalPrice && (
+                           <div className="flex items-center gap-1">
+                             <div className="w-1 h-1 bg-stone-300 rounded-full" />
+                             <p className="text-[10px] font-black text-green-600 uppercase tracking-widest leading-none">Precio: ${activeAppointment.finalPrice.toLocaleString()}</p>
+                           </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -3003,7 +3032,7 @@ export default function App() {
                             onClick={() => handleUpdateAppointmentStatus(activeAppointment.id, 'Completed')}
                             className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-primary"
                           >
-                            Confirmar Visita
+                            {profile?.role === 'client' && activeAppointment.professionalConfirmedPrice ? 'Confirmar y Pagar' : 'Confirmar Visita'}
                           </Button>
                         ) : (
                           <div className="px-3 py-1.5 bg-stone-100 rounded-lg border border-stone-200">
@@ -3689,6 +3718,145 @@ export default function App() {
             profile={profile}
             onSubmit={submitRating}
           />
+        )}
+
+        {showPriceConfirmModal && priceConfirmAppointment && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-50 border-2 border-stone-200 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
+              
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-primary" />
+                </div>
+                <h2 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Confirmar Trabajo</h2>
+                <p className="text-stone-500 text-xs font-bold uppercase tracking-widest mt-1">Finalización del Servicio</p>
+              </div>
+
+              <form onSubmit={handlePriceConfirmation} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Precio Final de la Visita</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-stone-300">$</span>
+                    <Input
+                      type="number"
+                      value={inputFinalPrice}
+                      onChange={(e) => setInputFinalPrice(e.target.value)}
+                      className="pl-10 text-2xl font-black h-16 rounded-2xl border-stone-100 bg-white"
+                      required
+                      placeholder="0"
+                    />
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-2 font-medium">Recordá que se aplica una comisión del 10% sobre este valor.</p>
+                </div>
+
+                <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 mb-6">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Comisión Resolve (10%)</span>
+                    <span className="text-sm font-black text-primary">
+                      ${(parseFloat(inputFinalPrice || '0') * 0.1).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Tu Ganancia Neta</span>
+                    <span className="text-sm font-black text-green-600">
+                      ${(parseFloat(inputFinalPrice || '0') * 0.9).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button 
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowPriceConfirmModal(false);
+                      setPriceConfirmAppointment(null);
+                    }}
+                    className="flex-1 py-4 text-xs font-black uppercase tracking-widest border-stone-100"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit"
+                    className="flex-1 py-4 text-xs font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                  >
+                    Confirmar
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showClientPaymentModal && paymentAppointment && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-50 border-2 border-stone-200 w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-full h-2 bg-primary" />
+              
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                  <CreditCard className="w-8 h-8 text-primary" />
+                </div>
+                <h2 className="text-2xl font-black text-stone-900 uppercase tracking-tight">Confirmar y Pagar</h2>
+                <p className="text-stone-500 text-xs font-bold uppercase tracking-widest mt-1">Finalización del Servicio</p>
+              </div>
+
+              <div className="bg-white p-6 rounded-[2rem] border border-stone-100 mb-8 space-y-4 shadow-sm">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-stone-400 font-bold uppercase tracking-widest text-[10px]">Precio del Servicio</span>
+                  <span className="font-black text-stone-900">${paymentAppointment.finalPrice?.toLocaleString()}</span>
+                </div>
+                <div className="border-t border-stone-100 pt-4 flex justify-between items-center">
+                  <span className="text-stone-900 font-black uppercase tracking-widest text-xs">Total a Pagar</span>
+                  <span className="font-black text-2xl text-primary">${paymentAppointment.finalPrice?.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Button 
+                  onClick={handleClientPayment}
+                  className="w-full py-4 text-sm font-black uppercase tracking-widest shadow-xl shadow-primary/20"
+                >
+                  Pagar y Finalizar
+                </Button>
+                <Button 
+                  variant="ghost"
+                  onClick={() => {
+                    setShowClientPaymentModal(false);
+                    setPaymentAppointment(null);
+                  }}
+                  className="w-full py-4 text-xs font-black uppercase tracking-widest border-stone-100"
+                >
+                  Cancelar
+                </Button>
+              </div>
+
+              <p className="text-[9px] text-stone-400 mt-6 text-center leading-relaxed">
+                Al confirmar, el servicio se marcará como pagado y el profesional recibirá el aviso correspondiente. Recordá que podés calificar la experiencia luego de este paso.
+              </p>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

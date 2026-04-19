@@ -49,6 +49,18 @@
         "photos": { "type": "array", "items": { "type": "string" } },
         "assignedProfessionalId": { "type": "string" },
         "isUrgent": { "type": "boolean" },
+        "aiBudget": {
+          "type": "object",
+          "properties": {
+            "minLabor": { "type": "number" },
+            "maxLabor": { "type": "number" },
+            "avgLabor": { "type": "number" },
+            "minMaterials": { "type": "number" },
+            "maxMaterials": { "type": "number" },
+            "avgMaterials": { "type": "number" },
+            "explanation": { "type": "string" }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["clientId", "category", "title", "description", "status", "location", "createdAt"]
@@ -120,6 +132,11 @@
         "professionalRated": { "type": "boolean" },
         "clientConfirmedCompletion": { "type": "boolean" },
         "professionalConfirmedCompletion": { "type": "boolean" },
+        "finalPrice": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["Pending", "Paid"] },
+        "professionalConfirmedPrice": { "type": "boolean" },
+        "clientConfirmedPrice": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["jobId", "bidId", "clientId", "professionalId", "startTime", "endTime", "status", "proposedBy", "createdAt"]

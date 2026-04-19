@@ -1,183 +1,101 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Fields: uid, displayName, email, photoURL, role, avgRating, numReviews, specialties
-    //
-    // Collection: jobs
-    // Fields: id, clientId, category, title, description, status, location, photos, assignedProfessionalId, isUrgent, createdAt
-    //
-    // Collection: bids
-    // Fields: id, jobId, professionalId, proposedPrice, message, createdAt, isContacted, isReadByClient, isReadByProfessional
-    //
-    // Collection: messages
-    // Fields: id, bidId, senderId, recipientId, text, timestamp, read
-    //
-    // Collection: reviews
-    // Fields: id, reviewerId, reviewedId, jobId, stars, comment, createdAt
-    //
-    // ===============================================================
-
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
+    // 0.1 Generic Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 
+    // 0.2 Application specific helpers
     function isAdmin() {
-      return isAuthenticated() &&
-        (request.auth.token.email == "gonzalo.sabsay@gmail.com" ||
-         request.auth.token.email == "gonzalo.sabsay@hotmail.com");
+      return isSignedIn() && 
+        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com"] && 
+         request.auth.token.email_verified == true);
     }
 
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-
-    function isValidEmail(email) {
-      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-    }
-
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-
+    // 1. Validation Blueprints
+    
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'displayName', 'firstName', 'lastName', 'username', 'email', 'photoURL', 'birthDate', 'phoneNumber', 'role', 'avgRating', 'numReviews', 'specialties', 'professionalDescription', 'licenseNumber', 'isProfessionalProfileComplete', 'isAdmin', 'hasSeenTutorial', 'hasSeenProfTutorial']) &&
-             data.uid is string && data.displayName is string && data.displayName.size() > 0 &&
-             data.firstName is string && data.firstName.size() > 0 &&
-             data.lastName is string && data.lastName.size() > 0 &&
-             data.username is string && data.username.size() > 0 &&
-             data.email is string && isValidEmail(data.email) &&
-             data.birthDate is string &&
-             data.phoneNumber is string &&
+      return data.keys().hasAll(['uid', 'displayName', 'firstName', 'lastName', 'username', 'email', 'birthDate', 'phoneNumber', 'role']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
              data.role in ['client', 'professional'] &&
              (!('specialties' in data) || data.specialties is list) &&
-             (!('professionalDescription' in data) || data.professionalDescription is string) &&
-             (!('licenseNumber' in data) || data.licenseNumber is string) &&
-             (!('isProfessionalProfileComplete' in data) || data.isProfessionalProfileComplete is bool) &&
-             (!('isAdmin' in data) || data.isAdmin is bool) &&
-             (!('hasSeenTutorial' in data) || data.hasSeenTutorial is bool) &&
-             (!('hasSeenProfTutorial' in data) || data.hasSeenProfTutorial is bool);
+             (!('isAdmin' in data) || data.isAdmin is bool);
     }
 
     function isValidJob(data) {
-      return hasRequiredFields(['clientId', 'category', 'title', 'description', 'status', 'location', 'createdAt']) &&
-             data.clientId is string && data.status in ['Open', 'Assigned', 'Completed'] &&
-             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.description is string && data.description.size() < 2000 &&
-             (!('isUrgent' in data) || data.isUrgent is bool);
+      return data.keys().hasAll(['clientId', 'category', 'title', 'description', 'status', 'location', 'createdAt']) &&
+             data.clientId is string && data.clientId.size() <= 128 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 5000 &&
+             data.status in ['Open', 'Assigned', 'Completed'] &&
+             (!('aiBudget' in data) || data.aiBudget is map);
     }
 
     function isValidBid(data) {
-      return hasRequiredFields(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
-             data.jobId is string && data.clientId is string && data.professionalId is string && data.proposedPrice is number && data.proposedPrice > 0 &&
-             data.professionalId != data.clientId &&
-             (!('message' in data) || data.message is string) &&
-             (!('lastMessage' in data) || data.lastMessage is string) &&
-             (!('lastMessageAt' in data) || data.lastMessageAt is string) &&
-             (!('isContacted' in data) || data.isContacted is bool) &&
-             (!('isReadByClient' in data) || data.isReadByClient is bool) &&
-             (!('isReadByProfessional' in data) || data.isReadByProfessional is bool) &&
-             (!('isCancelled' in data) || data.isCancelled is bool);
+      return data.keys().hasAll(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
+             data.proposedPrice is number && data.proposedPrice > 0;
     }
 
-    function isValidMessage(data) {
-      return hasRequiredFields(['bidId', 'senderId', 'recipientId', 'text', 'timestamp', 'read']) &&
-             data.bidId is string && data.senderId is string && data.recipientId is string &&
-             data.text is string && data.text.size() > 0 && data.text.size() < 1000 &&
-             data.read is bool;
-    }
-
-    function isValidReview(data) {
-      return hasRequiredFields(['reviewerId', 'reviewedId', 'jobId', 'stars', 'createdAt']) &&
-             data.stars is number && data.stars >= 1 && data.stars <= 5;
-    }
-
-    function isValidAppointment(data) {
-      return hasRequiredFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
-             hasOnlyAllowedFields(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'clientRated', 'professionalRated', 'createdAt']) &&
-             data.jobId is string && data.bidId is string && data.clientId is string && data.professionalId is string &&
-             data.startTime is string && data.endTime is string &&
-             data.status in ['Proposed', 'Accepted', 'Rejected', 'Cancelled', 'Completed'] &&
-             data.proposedBy is string &&
-             (!('clientRated' in data) || data.clientRated is bool) &&
-             (!('professionalRated' in data) || data.professionalRated is bool) &&
-             data.clientId != data.professionalId;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
+    // 2. Rules per collection
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) &&
-                      (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false || isAdmin());
-      allow update: if isValidUser(request.resource.data) &&
-                      ((isOwner(userId) && request.resource.data.isAdmin == resource.data.isAdmin) || isAdmin());
-      allow delete: if isOwner(userId) || isAdmin();
+      allow read: if isSignedIn();
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(incoming());
+      allow update: if (isOwner(userId) || isAdmin()) && 
+                    isValidUser(incoming()) &&
+                    (isAdmin() || incoming().role == existing().role); // Cannot change role once set
+      allow delete: if isAdmin();
     }
 
     match /jobs/{jobId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidJob(request.resource.data) && (request.resource.data.clientId == request.auth.uid || isAdmin());
-      allow update: if isAuthenticated() && (
-        (resource.data.clientId == request.auth.uid && isValidJob(request.resource.data)) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedProfessionalId', 'status']) && isAuthenticated()) ||
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidJob(incoming()) && incoming().clientId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        (existing().clientId == request.auth.uid && isValidJob(incoming())) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'assignedProfessionalId'])) ||
         isAdmin()
       );
-      allow delete: if isAuthenticated() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && existing().clientId == request.auth.uid);
     }
 
     match /bids/{bidId} {
-      allow read: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidBid(request.resource.data) && request.resource.data.professionalId == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin()) && isValidBid(request.resource.data);
-      allow delete: if isAuthenticated() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
+      allow read: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidBid(incoming()) && incoming().professionalId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.professionalId == request.auth.uid);
     }
 
     match /messages/{messageId} {
-      function isBidParticipant(bidId) {
-        let bid = get(/databases/$(database)/documents/bids/$(bidId)).data;
-        return bid.professionalId == request.auth.uid || bid.clientId == request.auth.uid || isAdmin();
-      }
-      function isBidParticipantWrite(bidId) {
-        let bid = getAfter(/databases/$(database)/documents/bids/$(bidId)).data;
-        return bid.professionalId == request.auth.uid || bid.clientId == request.auth.uid || isAdmin();
-      }
-      allow read: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId) || isAdmin());
-      allow create: if isAuthenticated() && isValidMessage(request.resource.data) && request.resource.data.senderId == request.auth.uid && isBidParticipantWrite(request.resource.data.bidId);
-      allow update: if isAuthenticated() && (
-        (resource.data.recipientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read == true) ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isBidParticipant(resource.data.bidId) || isAdmin());
-    }
-
-    match /reviews/{reviewId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidReview(request.resource.data) && request.resource.data.reviewerId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.recipientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']));
+      allow delete: if isAdmin();
     }
 
     match /appointments/{appointmentId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid);
-      allow create: if isAuthenticated() && (isAdmin() || (isValidAppointment(request.resource.data) && (request.resource.data.clientId == request.auth.uid || request.resource.data.professionalId == request.auth.uid) && request.resource.data.proposedBy == request.auth.uid));
-      allow update: if isAuthenticated() && (isAdmin() || (resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid) && isValidAppointment(request.resource.data));
-      allow delete: if isAuthenticated() && (isAdmin() || resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid);
+      allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() && (incoming().clientId == request.auth.uid || incoming().professionalId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().reviewerId == request.auth.uid;
+    }
+
+    // Path for connection test
+    match /test/connection {
+      allow read: if true;
     }
   }
 }

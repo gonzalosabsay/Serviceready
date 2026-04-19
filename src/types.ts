@@ -39,6 +39,15 @@ export interface Job {
   photos?: string[];
   assignedProfessionalId?: string;
   isUrgent?: boolean;
+  aiBudget?: {
+    minLabor: number;
+    maxLabor: number;
+    avgLabor: number;
+    minMaterials: number;
+    maxMaterials: number;
+    avgMaterials: number;
+    explanation: string;
+  };
   createdAt: string;
 }
 
@@ -96,6 +105,11 @@ export interface Appointment {
   professionalRated?: boolean;
   clientConfirmedCompletion?: boolean;
   professionalConfirmedCompletion?: boolean;
+  finalPrice?: number;
+  commissionAmount?: number;
+  paymentStatus?: 'Pending' | 'Paid';
+  professionalConfirmedPrice?: boolean;
+  clientConfirmedPrice?: boolean;
   createdAt: string;
   job?: Job;
   otherUser?: UserProfile;
