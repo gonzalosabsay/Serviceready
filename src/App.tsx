@@ -1237,7 +1237,12 @@ export default function App() {
     setAiBudget(null);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY') {
+        throw new Error('API_KEY_MISSING');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Eres un experto en presupuestos de servicios para el hogar en Argentina. Proporciona una estimación de costos detallada para el siguiente pedido:
@@ -1268,7 +1273,11 @@ export default function App() {
       setAiBudget(result);
     } catch (err) {
       console.error("AI estimation error:", err);
-      setError("No pudimos obtener el presupuesto sugerido en este momento.");
+      if (err instanceof Error && err.message === 'API_KEY_MISSING') {
+        setError("La función de IA no está configurada. Asegúrate de haber configurado GEMINI_API_KEY en las variables de entorno.");
+      } else {
+        setError("No pudimos obtener el presupuesto sugerido en este momento.");
+      }
     } finally {
       setIsAiEstimating(false);
     }
