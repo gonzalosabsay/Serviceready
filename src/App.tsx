@@ -4283,6 +4283,7 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
                       }}
                       className="px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-bold outline-none"
                     >
+                      <option value={1/60}>1 min (Test)</option>
                       <option value={0.5}>30 min</option>
                       <option value={1}>1 hora</option>
                       <option value={2}>2 horas</option>
