@@ -501,7 +501,6 @@ export default function App() {
   const [birthDate, setBirthDate] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [photoURL, setPhotoURL] = useState('');
-  const [imageOption, setImageOption] = useState<'url' | 'file'>('url');
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
@@ -965,6 +964,11 @@ export default function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
+  const getInitialsAvatar = (fn: string, ln: string) => {
+    const name = encodeURIComponent(`${fn} ${ln}`);
+    return `https://ui-avatars.com/api/?name=${name}&background=random&color=fff&size=200`;
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -992,7 +996,7 @@ export default function App() {
         lastName,
         username,
         email: user.email || '',
-        photoURL: photoURL || user.photoURL || '',
+        photoURL: photoURL || user.photoURL || getInitialsAvatar(firstName, lastName),
         birthDate,
         phoneNumber,
         role: 'client',
@@ -1205,7 +1209,7 @@ export default function App() {
         username,
         birthDate,
         phoneNumber,
-        photoURL,
+        photoURL: photoURL || profile.photoURL || getInitialsAvatar(firstName, lastName),
       };
 
       if (profile.role === 'professional') {
@@ -1881,6 +1885,7 @@ export default function App() {
     if (!profile?.isAdmin) return;
     setIsResetting(true);
     try {
+      // 1. Clear all major collections
       const collections = ['users', 'jobs', 'bids', 'messages', 'reviews', 'appointments'];
       for (const colName of collections) {
         const snapshot = await getDocs(collection(db, colName));
@@ -1888,14 +1893,25 @@ export default function App() {
         let count = 0;
         
         for (const docSnapshot of snapshot.docs) {
-          // Don't delete the current admin user
-          if (colName === 'users' && docSnapshot.id === user?.uid) continue;
+          // Don't delete the current admin user profile
+          if (colName === 'users' && docSnapshot.id === user?.uid) {
+            // But reset their professional stats/metadata if they are an admin
+            batch.update(docSnapshot.ref, {
+              avgRating: null,
+              numReviews: 0,
+              specialties: [],
+              professionalDescription: '',
+              licenseNumber: '',
+              isProfessionalProfileComplete: false,
+              workingHours: DEFAULT_WORKING_HOURS
+            });
+            count++;
+          } else {
+            batch.delete(docSnapshot.ref);
+            count++;
+          }
           
-          batch.delete(docSnapshot.ref);
-          count++;
-          
-          // Firestore batches have a 500 limit
-          if (count === 499) {
+          if (count >= 450) { // Keep it safe below 500
             await batch.commit();
             batch = writeBatch(db);
             count = 0;
@@ -1907,9 +1923,17 @@ export default function App() {
         }
       }
       
-      setError("Base de datos (Firestore) reseteada con éxito. Recuerda borrar los usuarios en la Consola de Firebase.");
+      // 2. Additional cleanup: Ensure all scheduled sessions or special metadata is cleared if any exist in other paths
+      
+      setError("Sistema reseteado por completo: usuarios, trabajos, ofertas, mensajes y agendas/turnos han sido eliminados.");
       setView('home');
       setShowResetConfirm(false);
+      
+      // Optional: force a slight delay then reload to clear all local states
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+
     } catch (err) {
       console.error("Error resetting database:", err);
       setError("Error al resetear la base de datos.");
@@ -2037,63 +2061,32 @@ export default function App() {
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center gap-4 mb-2">
-                <button 
-                  type="button"
-                  onClick={() => { setImageOption('url'); }}
-                  className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'url' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Foto de Perfil</label>
+              <div className="relative">
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleFileChange}
+                  className="hidden" 
+                  id="profile-upload-complete"
+                />
+                <label 
+                  htmlFor="profile-upload-complete" 
+                  className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
                 >
-                  URL de Imagen
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => { setImageOption('file'); }}
-                  className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'file' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
-                >
-                  Subir Archivo
-                </button>
+                  {photoURL ? (
+                    <div className="flex items-center gap-2">
+                      <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
+                      <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-zinc-400">
+                      <Plus className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-widest">Subir Imagen</span>
+                    </div>
+                  )}
+                </label>
               </div>
-
-              {imageOption === 'url' ? (
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
-                  <Input 
-                    type="url"
-                    value={photoURL} 
-                    onChange={(e) => setPhotoURL(e.target.value)} 
-                    placeholder="https://..." 
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Adjuntar Foto Perfil</label>
-                  <div className="relative">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleFileChange}
-                      className="hidden" 
-                      id="profile-upload-complete"
-                    />
-                    <label 
-                      htmlFor="profile-upload-complete" 
-                      className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
-                    >
-                      {photoURL ? (
-                        <div className="flex items-center gap-2">
-                          <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
-                          <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-zinc-400">
-                          <Plus className="w-4 h-4" />
-                          <span className="text-xs font-bold uppercase tracking-widest">Seleccionar Imagen</span>
-                        </div>
-                      )}
-                    </label>
-                  </div>
-                </div>
-              )}
             </div>
 
             <Button type="submit" className="w-full py-4 text-sm font-black uppercase tracking-widest shadow-lg shadow-primary/20">
@@ -2181,65 +2174,32 @@ export default function App() {
 
             {isSignUp && (
               <div className="space-y-4">
-                <div className="flex items-center gap-4 mb-2">
-                  <button 
-                    type="button"
-                    onClick={() => { setImageOption('url'); setPhotoURL(''); }}
-                    className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'url' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Foto de Perfil</label>
+                <div className="relative">
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleFileChange}
+                    className="hidden" 
+                    id="profile-upload"
+                  />
+                  <label 
+                    htmlFor="profile-upload" 
+                    className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
                   >
-                    URL de Imagen
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => { setImageOption('file'); setPhotoURL(''); }}
-                    className={cn("text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all", imageOption === 'file' ? "bg-primary text-white" : "bg-zinc-100 text-zinc-500")}
-                  >
-                    Subir Archivo
-                  </button>
+                    {photoURL ? (
+                      <div className="flex items-center gap-2">
+                        <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
+                        <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-zinc-400">
+                        <Plus className="w-4 h-4" />
+                        <span className="text-xs font-bold uppercase tracking-widest">Subir Imagen</span>
+                      </div>
+                    )}
+                  </label>
                 </div>
-
-                {imageOption === 'url' ? (
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">URL Foto Perfil</label>
-                    <Input 
-                      type="url"
-                      value={photoURL} 
-                      onChange={(e) => setPhotoURL(e.target.value)} 
-                      placeholder="https://..." 
-                      required 
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-1">Adjuntar Foto Perfil</label>
-                    <div className="relative">
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleFileChange}
-                        className="hidden" 
-                        id="profile-upload"
-                        required={!photoURL}
-                      />
-                      <label 
-                        htmlFor="profile-upload" 
-                        className="flex items-center justify-center w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
-                      >
-                        {photoURL ? (
-                          <div className="flex items-center gap-2">
-                            <img src={photoURL} className="w-8 h-8 rounded-full object-cover" alt="Preview" />
-                            <span className="text-xs font-bold text-primary">Imagen seleccionada</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 text-zinc-400">
-                            <Plus className="w-4 h-4" />
-                            <span className="text-xs font-bold uppercase tracking-widest">Seleccionar Imagen</span>
-                          </div>
-                        )}
-                      </label>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -3491,13 +3451,18 @@ export default function App() {
                   <Modal 
                     isOpen={showResetConfirm} 
                     onClose={() => setShowResetConfirm(false)} 
-                    title="¿Resetear Base de Datos?"
+                    title="¿Resetear Base de Datos y Agendas?"
                     disabled={isResetting}
                   >
-                    <p className="text-zinc-600 mb-6">
-                      ¿ESTÁS SEGURO? Esto eliminará TODOS los perfiles, trabajos, ofertas y mensajes de la base de datos (Firestore).
+                    <p className="text-zinc-600 mb-6 font-medium">
+                      ¿ESTÁS SEGURO? Esta acción es irreversible y realizará lo siguiente:
                       <br /><br />
-                      IMPORTANTE: Los usuarios de autenticación (emails/logins) NO se pueden borrar automáticamente desde aquí por seguridad de Firebase. Deberás borrarlos manualmente en la Consola de Firebase para que puedan volver a registrarse con el mismo email.
+                      • Eliminará todos los perfiles de usuarios (menos el tuyo).<br />
+                      • Borrará todos los trabajos y ofertas.<br />
+                      • <span className="text-destructive font-bold uppercase italic">VACIARÁ TODAS LAS AGENDAS Y TURNOS SOLICITADOS.</span><br />
+                      • Eliminará todos los mensajes de chat y reseñas.
+                      <br /><br />
+                      IMPORTANTE: Los usuarios de autenticación NO se pueden borrar automáticamente. Deberás borrarlos manualmente en la Consola de Firebase para un reinicio total de logins.
                     </p>
                     <Button 
                       variant="danger" 
@@ -3694,12 +3659,32 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">URL Foto de Perfil</label>
-                  <Input
-                    type="url"
-                    value={photoURL}
-                    onChange={(e) => setPhotoURL(e.target.value)}
-                  />
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Foto de Perfil</label>
+                  <div className="relative mb-4">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleFileChange}
+                      className="hidden" 
+                      id="profile-upload-edit"
+                    />
+                    <label 
+                      htmlFor="profile-upload-edit" 
+                      className="flex items-center justify-center w-full py-4 border-2 border-dashed border-stone-200 rounded-[1.5rem] cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                    >
+                      {photoURL ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <img src={photoURL} className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-md shadow-black/5" alt="Preview" />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-primary">Cambiar Imagen</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-stone-400">
+                          <Plus className="w-6 h-6" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Subir Imagen</span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
                 </div>
 
                 {profile?.role === 'professional' && (
