@@ -28,6 +28,8 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() <= 100 &&
              data.email is string && data.email.size() <= 100 &&
              data.role in ['client', 'professional'] &&
+             (!('avgRating' in data) || data.avgRating is number) &&
+             (!('numReviews' in data) || data.numReviews is number) &&
              (!('specialties' in data) || data.specialties is list) &&
              (!('isAdmin' in data) || data.isAdmin is bool);
     }
@@ -46,14 +48,27 @@ service cloud.firestore {
              data.proposedPrice is number && data.proposedPrice > 0;
     }
 
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['jobId', 'bidId', 'clientId', 'professionalId', 'startTime', 'endTime', 'status', 'proposedBy', 'createdAt']) &&
+             data.status in ['Proposed', 'Accepted', 'Rejected', 'Cancelled', 'Completed'];
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll(['reviewerId', 'reviewedId', 'jobId', 'stars', 'comment', 'createdAt']) &&
+             data.reviewerId is string && data.reviewedId is string &&
+             data.stars is number && data.stars >= 1 && data.stars <= 5;
+    }
+
     // 2. Rules per collection
 
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if (isOwner(userId) || isAdmin()) && isValidUser(incoming());
-      allow update: if (isOwner(userId) || isAdmin()) && 
-                    isValidUser(incoming()) &&
-                    (isAdmin() || incoming().role == existing().role); // Cannot change role once set
+      allow update: if (isValidUser(incoming()) && (
+        isOwner(userId) || 
+        isAdmin() || 
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['avgRating', 'numReviews']))
+      )) && (isAdmin() || incoming().role == existing().role);
       allow delete: if isAdmin();
     }
 
@@ -84,13 +99,18 @@ service cloud.firestore {
 
     match /appointments/{appointmentId} {
       allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid || isAdmin());
-      allow create, update: if isSignedIn() && (incoming().clientId == request.auth.uid || incoming().professionalId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidAppointment(incoming()) && (incoming().clientId == request.auth.uid || incoming().professionalId == request.auth.uid);
+      allow update: if isSignedIn() && (
+        (existing().clientId == request.auth.uid || existing().professionalId == request.auth.uid || isAdmin()) &&
+        isValidAppointment(incoming())
+      );
       allow delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && incoming().reviewerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidReview(incoming()) && incoming().reviewerId == request.auth.uid;
+      allow delete: if isAdmin();
     }
 
     // Path for connection test

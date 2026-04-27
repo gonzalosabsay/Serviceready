@@ -23,7 +23,18 @@
         "isProfessionalProfileComplete": { "type": "boolean" },
         "isAdmin": { "type": "boolean" },
         "hasSeenTutorial": { "type": "boolean" },
-        "hasSeenProfTutorial": { "type": "boolean" }
+        "hasSeenProfTutorial": { "type": "boolean" },
+        "workingHours": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "start": { "type": "string" },
+              "end": { "type": "string" },
+              "active": { "type": "boolean" }
+            }
+          }
+        }
       },
       "required": ["uid", "displayName", "firstName", "lastName", "username", "email", "birthDate", "phoneNumber", "role"]
     },

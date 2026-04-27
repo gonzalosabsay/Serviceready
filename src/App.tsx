@@ -120,7 +120,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,
@@ -250,6 +250,72 @@ const Modal = ({ isOpen, onClose, title, children, disabled }: { isOpen: boolean
   );
 };
 
+const WorkingHoursManager = ({ hours, onChange }: { hours: UserProfile['workingHours'], onChange: (h: UserProfile['workingHours']) => void }) => {
+  const days = [
+    { id: '1', name: 'Lunes' },
+    { id: '2', name: 'Martes' },
+    { id: '3', name: 'Miércoles' },
+    { id: '4', name: 'Jueves' },
+    { id: '5', name: 'Viernes' },
+    { id: '6', name: 'Sábado' },
+    { id: '0', name: 'Domingo' },
+  ];
+
+  const updateDay = (dayId: string, field: string, value: any) => {
+    const newHours = { ...hours };
+    if (!newHours[dayId]) {
+      newHours[dayId] = { start: '09:00', end: '18:00', active: true };
+    }
+    newHours[dayId] = { ...newHours[dayId], [field]: value };
+    onChange(newHours);
+  };
+
+  return (
+    <div className="space-y-4">
+      {days.map((day) => {
+        const h = hours?.[day.id] || { start: '09:00', end: '18:00', active: false };
+        return (
+          <div key={day.id} className="flex items-center gap-4 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+            <div className="flex-1">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={h.active} 
+                  onChange={(e) => updateDay(day.id, 'active', e.target.checked)}
+                  className="w-5 h-5 rounded-lg border-2 border-stone-200 text-primary focus:ring-primary/20"
+                />
+                <span className="text-sm font-bold text-stone-700">{day.name}</span>
+              </label>
+            </div>
+            
+            {h.active && (
+              <div className="flex items-center gap-2">
+                <input 
+                  type="time" 
+                  value={h.start} 
+                  onChange={(e) => updateDay(day.id, 'start', e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-stone-200 text-xs font-bold bg-white"
+                />
+                <span className="text-stone-300">/</span>
+                <input 
+                  type="time" 
+                  value={h.end} 
+                  onChange={(e) => updateDay(day.id, 'end', e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-stone-200 text-xs font-bold bg-white"
+                />
+              </div>
+            )}
+            
+            {!h.active && (
+              <span className="text-[10px] font-black text-stone-300 uppercase tracking-widest">No disponible</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile | null, isOpen: boolean, onClose: () => void }) => {
   if (!isOpen || !profile) return null;
 
@@ -374,6 +440,16 @@ const blueIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+const DEFAULT_WORKING_HOURS = {
+  '1': { start: '09:00', end: '18:00', active: true },
+  '2': { start: '09:00', end: '18:00', active: true },
+  '3': { start: '09:00', end: '18:00', active: true },
+  '4': { start: '09:00', end: '18:00', active: true },
+  '5': { start: '09:00', end: '18:00', active: true },
+  '6': { start: '09:00', end: '18:00', active: false },
+  '0': { start: '09:00', end: '18:00', active: false },
+};
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -434,6 +510,7 @@ export default function App() {
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
   const [profDescription, setProfDescription] = useState('');
   const [profLicense, setProfLicense] = useState('');
+  const [workingHours, setWorkingHours] = useState<UserProfile['workingHours']>(DEFAULT_WORKING_HOURS);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -442,6 +519,8 @@ export default function App() {
   const [unreadBidIds, setUnreadBidIds] = useState<Set<string>>(new Set());
   const [aiBudget, setAiBudget] = useState<any | null>(null);
   const [isAiEstimating, setIsAiEstimating] = useState(false);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [isSubmittingBid, setIsSubmittingBid] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [showPriceConfirmModal, setShowPriceConfirmModal] = useState(false);
@@ -550,6 +629,13 @@ export default function App() {
               setPhotoURL(prev => prev || data.photoURL || u.photoURL || '');
             } else {
               setIsCompletingProfile(false);
+            }
+
+            if (data.role === 'professional') {
+              setProfSpecialties(data.specialties || []);
+              setProfDescription(data.professionalDescription || '');
+              setProfLicense(data.licenseNumber || '');
+              setWorkingHours(data.workingHours || DEFAULT_WORKING_HOURS);
             }
 
             if (shouldBeAdmin && !data.isAdmin) {
@@ -1126,6 +1212,7 @@ export default function App() {
         updatedData.specialties = profSpecialties;
         updatedData.professionalDescription = profDescription;
         updatedData.licenseNumber = profLicense;
+        updatedData.workingHours = workingHours;
         updatedData.isProfessionalProfileComplete = true;
       }
 
@@ -1159,6 +1246,7 @@ export default function App() {
         specialties: profSpecialties,
         professionalDescription: profDescription,
         licenseNumber: profLicense,
+        workingHours: workingHours,
         isProfessionalProfileComplete: true,
         role: 'professional' as const
       };
@@ -1292,7 +1380,8 @@ export default function App() {
 
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!profile || isCreatingJob) return;
+    setIsCreatingJob(true);
     const formData = new FormData(e.currentTarget);
     const newJob = {
       clientId: profile.uid,
@@ -1317,17 +1406,20 @@ export default function App() {
       setSearchQuery('');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'jobs');
+    } finally {
+      setIsCreatingJob(false);
     }
   };
 
   const submitBid = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!profile || !selectedJob) return;
+    if (!profile || !selectedJob || isSubmittingBid) return;
     
     if (selectedJob.clientId === profile.uid) {
       return;
     }
 
+    setIsSubmittingBid(true);
     const formData = new FormData(e.currentTarget);
     const newBid = {
       jobId: selectedJob.id,
@@ -1367,6 +1459,8 @@ export default function App() {
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'bids');
       setError('Error al enviar la postulación. Por favor, intenta de nuevo.');
+    } finally {
+      setIsSubmittingBid(false);
     }
   };
 
@@ -1787,24 +1881,26 @@ export default function App() {
     if (!profile?.isAdmin) return;
     setIsResetting(true);
     try {
-      const collections = ['users', 'jobs', 'bids', 'messages', 'reviews'];
+      const collections = ['users', 'jobs', 'bids', 'messages', 'reviews', 'appointments'];
       for (const colName of collections) {
         const snapshot = await getDocs(collection(db, colName));
-        const batch = writeBatch(db);
+        let batch = writeBatch(db);
         let count = 0;
         
-        snapshot.docs.forEach((doc) => {
+        for (const docSnapshot of snapshot.docs) {
           // Don't delete the current admin user
-          if (colName === 'users' && doc.id === user?.uid) return;
+          if (colName === 'users' && docSnapshot.id === user?.uid) continue;
           
-          batch.delete(doc.ref);
+          batch.delete(docSnapshot.ref);
           count++;
           
           // Firestore batches have a 500 limit
           if (count === 499) {
-            console.log(`Committing partial batch for ${colName}`);
+            await batch.commit();
+            batch = writeBatch(db);
+            count = 0;
           }
-        });
+        }
         
         if (count > 0) {
           await batch.commit();
@@ -2674,8 +2770,12 @@ export default function App() {
                       )}
                     </div>
 
-                    <Button type="submit" className="w-full py-4 text-base font-bold uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20 group">
-                      Publicar Ahora
+                    <Button 
+                      type="submit" 
+                      disabled={isCreatingJob}
+                      className="w-full py-4 text-base font-bold uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20 group"
+                    >
+                      {isCreatingJob ? 'Publicando...' : 'Publicar Ahora'}
                       <Plus className="w-5 h-5 ml-2 group-hover:rotate-90 transition-transform" />
                     </Button>
                   </form>
@@ -2879,7 +2979,13 @@ export default function App() {
                           <form onSubmit={submitBid} className="space-y-4">
                             <Input name="price" type="number" placeholder="Precio Estimado ($)" required />
                             <TextArea name="message" placeholder="Mensaje de postulación..." rows={3} required maxLength={500} />
-                            <Button type="submit" className="w-full">Enviar Postulación</Button>
+                            <Button 
+                              type="submit" 
+                              disabled={isSubmittingBid}
+                              className="w-full"
+                            >
+                              {isSubmittingBid ? 'Enviando...' : 'Enviar Postulación'}
+                            </Button>
                           </form>
                         </div>
                       )}
@@ -2976,7 +3082,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {profile?.role === 'professional' && !activeAppointment && !isChatClosed && (
+                  {profile?.role === 'client' && !activeAppointment && !isChatClosed && (
                     <Button 
                       variant="ghost" 
                       onClick={() => setShowAppointmentModal(true)}
@@ -3501,6 +3607,14 @@ export default function App() {
                   />
                 </div>
 
+                <div className="mt-8">
+                  <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Horarios de Atención</label>
+                  <WorkingHoursManager 
+                    hours={workingHours || DEFAULT_WORKING_HOURS} 
+                    onChange={setWorkingHours} 
+                  />
+                </div>
+
                 <div className="pt-4">
                   <Button 
                     type="submit" 
@@ -3640,6 +3754,14 @@ export default function App() {
                           onChange={(e) => setProfLicense(e.target.value)}
                         />
                       </div>
+
+                      <div className="mt-8">
+                        <label className="block text-xs font-black text-stone-400 uppercase tracking-widest mb-3">Horarios de Atención</label>
+                        <WorkingHoursManager 
+                          hours={workingHours || DEFAULT_WORKING_HOURS} 
+                          onChange={setWorkingHours} 
+                        />
+                      </div>
                     </div>
                   </>
                 )}
@@ -3685,12 +3807,12 @@ export default function App() {
                 if (selectedBid) {
                   const startTime = parseISO(apptData.startTime);
                   const formattedDate = format(startTime, "EEEE d 'de' MMMM 'a las' HH:mm", { locale: es });
-                  const systemMsg = `📅 He propuesto un encuentro para el ${formattedDate}.`;
+                  const systemMsg = `📅 He solicitado un encuentro para el ${formattedDate}. Por favor, confírmalo si estás disponible.`;
                   await sendSystemMessage(
                     selectedBid.id,
                     systemMsg,
                     profile.uid,
-                    selectedBid.clientId
+                    selectedBid.professionalId
                   );
                 }
 
@@ -3991,45 +4113,77 @@ function BidsList({ jobId, clientId, onSelectBid, onViewProfile }: { jobId: stri
 }
 
 const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments, onPropose }: { isOpen: boolean, onClose: () => void, bid: any, profile: UserProfile, existingAppointments: Appointment[], onPropose: (appt: any) => void }) => {
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [startTime, setStartTime] = useState('09:00');
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
+  const [selectedSlot, setSelectedSlot] = useState<Date | null>(null);
   const [duration, setDuration] = useState(1);
+  const [profProfile, setProfProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const checkConflicts = (start: Date, end: Date) => {
-    return existingAppointments.some(appt => {
-      if (appt.status === 'Rejected' || appt.status === 'Cancelled') return false;
-      const apptStart = parseISO(appt.startTime);
-      const apptEnd = parseISO(appt.endTime);
-      return (
-        (start >= apptStart && start < apptEnd) ||
-        (end > apptStart && end <= apptEnd) ||
-        (start <= apptStart && end >= apptEnd)
-      );
-    });
-  };
+  useEffect(() => {
+    if (isOpen && bid.professionalId) {
+      setLoading(true);
+      getDoc(doc(db, 'users', bid.professionalId)).then(snap => {
+        if (snap.exists()) {
+          setProfProfile({ uid: snap.id, ...snap.data() } as UserProfile);
+        }
+        setLoading(false);
+      }).catch(err => {
+        console.error("Error fetching professional profile:", err);
+        setLoading(false);
+      });
+    }
+  }, [isOpen, bid.professionalId]);
+
+  const availableSlots = useMemo(() => {
+    if (!profProfile) return [];
+    
+    const date = selectedDate;
+    const dayOfWeek = date.getDay().toString();
+    const wh = profProfile.workingHours?.[dayOfWeek] || DEFAULT_WORKING_HOURS[dayOfWeek as keyof typeof DEFAULT_WORKING_HOURS];
+    
+    if (!wh || !wh.active) return [];
+
+    const slots = [];
+    const [startH, startM] = wh.start.split(':').map(Number);
+    const [endH, endM] = wh.end.split(':').map(Number);
+    
+    let current = new Date(date);
+    current.setHours(startH, startM, 0, 0);
+    
+    const limit = new Date(date);
+    limit.setHours(endH, endM, 0, 0);
+
+    while (current < limit) {
+      const slotStart = new Date(current);
+      const slotEnd = addHours(slotStart, duration);
+      
+      const isConflict = existingAppointments.some(appt => {
+        if (appt.status === 'Rejected' || appt.status === 'Cancelled') return false;
+        const apptStart = parseISO(appt.startTime);
+        const apptEnd = parseISO(appt.endTime);
+        return (slotStart < apptEnd && slotEnd > apptStart);
+      });
+      
+      if (!isConflict && slotStart > new Date()) {
+        slots.push(slotStart);
+      }
+      
+      current.setMinutes(current.getMinutes() + 30);
+    }
+    return slots;
+  }, [selectedDate, profProfile, existingAppointments, duration]);
 
   const handlePropose = () => {
-    const start = parseISO(`${date}T${startTime}`);
-    const end = addHours(start, duration);
-
-    if (start < new Date()) {
-      setError('No puedes agendar en el pasado.');
-      return;
-    }
-
-    if (checkConflicts(start, end)) {
-      setError('Ya tienes un compromiso en ese horario.');
-      return;
-    }
-
+    if (!selectedSlot) return;
+    
     onPropose({
       jobId: bid.jobId,
       bidId: bid.id,
       clientId: bid.clientId,
       professionalId: bid.professionalId,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
+      startTime: selectedSlot.toISOString(),
+      endTime: addHours(selectedSlot, duration).toISOString(),
       status: 'Proposed',
       proposedBy: profile.uid
     });
@@ -4037,76 +4191,150 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
 
   if (!isOpen) return null;
 
+  // Calendar logic
+  const monthStart = startOfMonth(selectedDate);
+  const monthEnd = endOfMonth(monthStart);
+  const calendarDays = eachDayOfInterval({
+    start: startOfWeek(monthStart),
+    end: endOfWeek(monthEnd)
+  });
+
   return (
-    <div className="fixed inset-0 z-[4000] flex justify-center items-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[4000] flex justify-center items-end sm:items-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl relative"
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        className="bg-white w-full max-w-lg rounded-t-[3rem] sm:rounded-[3rem] overflow-hidden shadow-2xl relative flex flex-col max-h-[95vh]"
       >
-        <div className="p-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-black text-stone-900">Agendar Encuentro</h2>
+        <div className="p-8 border-b border-stone-100 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+               <h2 className="text-2xl font-black text-stone-900">Agendar Turno</h2>
+               <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mt-1">Con {profProfile?.displayName || 'el profesional'}</p>
+            </div>
             <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
               <X className="w-6 h-6 text-stone-400" />
             </button>
           </div>
+        </div>
 
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Fecha</label>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} min={format(new Date(), 'yyyy-MM-dd')} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Hora de Inicio</label>
-                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1.5">Duración (Horas)</label>
-                  <select 
-                    value={duration} 
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full px-4 py-3 rounded-xl bg-stone-50 border border-stone-200 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                  >
-                    <option value={1/60}>1 min (Test)</option>
-                    <option value={0.5}>30 min</option>
-                    <option value={1}>1 hora</option>
-                    <option value={2}>2 horas</option>
-                    <option value={3}>3 horas</option>
-                    <option value={4}>4 horas</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+           {loading ? (
+             <div className="flex flex-col items-center justify-center py-12">
+                <Clock className="w-12 h-12 text-stone-200 animate-pulse mb-4" />
+                <p className="text-xs font-black text-stone-400 uppercase tracking-widest">Cargando disponibilidad...</p>
+             </div>
+           ) : (
+             <>
+                <section>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest">1. Seleccioná el día</h3>
+                    <div className="flex items-center gap-4">
+                       <button onClick={() => setSelectedDate(subMonths(selectedDate, 1))} className="p-2 hover:bg-stone-50 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                       <span className="text-sm font-black uppercase text-[10px] w-24 text-center">{format(selectedDate, 'MMMM yyyy', { locale: es })}</span>
+                       <button onClick={() => setSelectedDate(addMonths(selectedDate, 1))} className="p-2 hover:bg-stone-50 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-7 gap-1">
+                    {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map(d => (
+                      <div key={d} className="text-center text-[10px] font-black text-stone-300 py-2">{d}</div>
+                    ))}
+                    {calendarDays.map((day, idx) => {
+                      const isSelected = isSameDay(day, selectedDate);
+                      const isToday = isSameDay(day, new Date());
+                      const isCurrentMonth = isSameMonth(day, selectedDate);
+                      const isPast = startOfDay(day) < startOfDay(new Date());
+                      
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            if (!isPast) {
+                              setSelectedDate(day);
+                              setSelectedSlot(null);
+                            }
+                          }}
+                          disabled={isPast}
+                          className={cn(
+                            "aspect-square rounded-2xl flex flex-col items-center justify-center text-sm font-bold transition-all relative overflow-hidden",
+                            !isCurrentMonth && "opacity-20",
+                            isSelected ? "bg-primary text-white shadow-lg shadow-primary/30" : "hover:bg-primary/5",
+                            isPast && "cursor-not-allowed opacity-10",
+                            isToday && !isSelected && "text-primary border-2 border-primary/20"
+                          )}
+                        >
+                          {day.getDate()}
+                          {isToday && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary rounded-full" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
 
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-bold flex items-center gap-2">
-                <X className="w-4 h-4" />
-                {error}
-              </div>
-            )}
+                <section>
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest">2. Duración estimada</h3>
+                    <select 
+                      value={duration} 
+                      onChange={(e) => {
+                        setDuration(Number(e.target.value));
+                        setSelectedSlot(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-bold outline-none"
+                    >
+                      <option value={0.5}>30 min</option>
+                      <option value={1}>1 hora</option>
+                      <option value={2}>2 horas</option>
+                      <option value={3}>3 horas</option>
+                      <option value={4}>4 horas</option>
+                    </select>
+                  </div>
+                </section>
 
-            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-primary" />
-                </div>
-                <span className="text-xs font-bold text-stone-600">Resumen del encuentro</span>
-              </div>
-              <p className="text-sm font-bold text-stone-900">
-                {format(parseISO(`${date}T${startTime}`), "EEEE d 'de' MMMM", { locale: es })}
-              </p>
-              <p className="text-xs text-stone-500">
-                De {startTime} a {format(addHours(parseISO(`${date}T${startTime}`), duration), 'HH:mm')}
-              </p>
-            </div>
+                <section>
+                   <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-6">3. Horarios disponibles</h3>
+                   {availableSlots.length > 0 ? (
+                     <div className="grid grid-cols-3 gap-3">
+                        {availableSlots.map((slot, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedSlot(slot)}
+                            className={cn(
+                              "py-3 rounded-2xl text-xs font-black border-2 transition-all",
+                              selectedSlot && slot.getTime() === selectedSlot.getTime()
+                                ? "bg-primary border-primary text-white shadow-lg shadow-primary/20"
+                                : "bg-white border-stone-100 text-stone-600 hover:border-stone-200"
+                            )}
+                          >
+                            {format(slot, 'HH:mm')}
+                          </button>
+                        ))}
+                     </div>
+                   ) : (
+                     <div className="p-8 bg-stone-50 rounded-[2rem] border-2 border-dashed border-stone-200 text-center">
+                        <Calendar className="w-8 h-8 text-stone-300 mx-auto mb-3" />
+                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">No hay horarios disponibles para este día</p>
+                     </div>
+                   )}
+                </section>
+             </>
+           )}
+        </div>
 
-            <Button onClick={handlePropose} className="w-full py-4 rounded-2xl shadow-lg shadow-primary/20">
-              Proponer Horario
-            </Button>
-          </div>
+        <div className="p-8 bg-stone-50 border-t border-stone-100 flex-shrink-0">
+           <Button 
+            disabled={!selectedSlot || loading} 
+            onClick={handlePropose}
+            className="w-full py-4 rounded-2xl shadow-xl shadow-primary/20 font-black uppercase tracking-widest"
+           >
+             Solicitar Turno
+           </Button>
+           {selectedSlot && (
+             <p className="text-center text-[10px] font-black text-stone-400 uppercase tracking-widest mt-4">
+                Encuentro solicitado para el {format(selectedSlot, "d 'de' MMMM 'a las' HH:mm", { locale: es })}
+             </p>
+           )}
         </div>
       </motion.div>
     </div>
@@ -4223,8 +4451,8 @@ const CalendarComponent = ({ selectedDate, onDateSelect, appointments }: {
       </div>
       
       <div className="grid grid-cols-7 gap-1 mb-2">
-        {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map(d => (
-          <div key={d} className="text-center text-[10px] font-black text-stone-300 py-2">{d}</div>
+        {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
+          <div key={`${d}-${i}`} className="text-center text-[10px] font-black text-stone-300 py-2">{d}</div>
         ))}
       </div>
       

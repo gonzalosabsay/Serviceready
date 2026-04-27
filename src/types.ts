@@ -20,6 +20,13 @@ export interface UserProfile {
   isAdmin?: boolean;
   hasSeenTutorial?: boolean;
   hasSeenProfTutorial?: boolean;
+  workingHours?: {
+    [key: string]: { // '0' to '6' for Sunday to Saturday
+      start: string; // 'HH:mm'
+      end: string;   // 'HH:mm'
+      active: boolean;
+    }
+  };
 }
 
 export type JobStatus = 'Open' | 'Assigned' | 'Completed';
