@@ -16,8 +16,7 @@ service cloud.firestore {
     // 0.2 Application specific helpers
     function isAdmin() {
       return isSignedIn() && 
-        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com"] && 
-         request.auth.token.email_verified == true);
+        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com"]);
     }
 
     // 1. Validation Blueprints
@@ -28,8 +27,8 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() <= 100 &&
              data.email is string && data.email.size() <= 100 &&
              data.role in ['client', 'professional'] &&
-             (!('avgRating' in data) || data.avgRating is number) &&
-             (!('numReviews' in data) || data.numReviews is number) &&
+             (!('avgRating' in data) || data.avgRating == null || data.avgRating is number) &&
+             (!('numReviews' in data) || data.numReviews == null || data.numReviews is number) &&
              (!('specialties' in data) || data.specialties is list) &&
              (!('isAdmin' in data) || data.isAdmin is bool);
     }
