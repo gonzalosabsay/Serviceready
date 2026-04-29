@@ -1454,7 +1454,7 @@ export default function App() {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
-        throw new Error('API_KEY_MISSING - Configura GEMINI_API_KEY.');
+        throw new Error('API_KEY_MISSING - La API Key de Gemini no está configurada.');
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1505,9 +1505,13 @@ export default function App() {
 
       setChatMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
     } catch (err: any) {
-      console.error("Chatbot error:", err);
+      console.error("Chatbot error details:", err);
       let errorMsg = "Lo siento, tuve un problema al procesar tu mensaje.";
-      if (err.message === 'API_KEY_MISSING') errorMsg = "La IA no está configurada (Falta API Key).";
+      if (err.message && err.message.includes('API_KEY_MISSING')) {
+        errorMsg = "La IA no está configurada. Por favor, configura GEMINI_API_KEY en los ajustes.";
+      } else if (err.message) {
+        errorMsg = `Error: ${err.message}`;
+      }
       setChatMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
     } finally {
       setIsAiResponding(false);
