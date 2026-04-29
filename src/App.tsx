@@ -1465,7 +1465,7 @@ export default function App() {
 
       // Send message with system instructions context
       const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         contents: [
           ...history,
           { role: 'user', parts: [{ text: `CONTEXTO SISTEMA: ${CHATBOT_SYSTEM_PROMPT}\n\nMENSAJE USUARIO: ${text}` }] }
@@ -1509,6 +1509,8 @@ export default function App() {
       let errorMsg = "Lo siento, tuve un problema al procesar tu mensaje.";
       if (err.message && err.message.includes('API_KEY_MISSING')) {
         errorMsg = "La IA no está configurada. Por favor, configura GEMINI_API_KEY en los ajustes.";
+      } else if (err.message && (err.message.includes('503') || err.message.includes('high demand'))) {
+        errorMsg = "El servicio de IA está muy saturado en este momento. Por favor, intenta de nuevo en unos segundos.";
       } else if (err.message) {
         errorMsg = `Error: ${err.message}`;
       }
