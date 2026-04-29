@@ -1427,7 +1427,7 @@ export default function App() {
   };
 
   const CHATBOT_SYSTEM_PROMPT = `
-    Eres Resolve Assistant, el chatbot de resolve.la.
+    Eres Coso, el chatbot de resolve.la.
     TU MISIÓN: Ayudar al cliente de la forma más rápida y breve posible.
     
     REGLA DE ORO: Responde en una o dos oraciones máximo. Sé directo y escueto.
@@ -2498,8 +2498,15 @@ export default function App() {
                         </div>
                       )}
                       {profile?.role === 'client' && (
-                        <Button id="new-job-button" onClick={() => setView('create-job')} className="flex items-center gap-2">
-                          <Plus className="w-5 h-5" /> ¿Qué Necesitás?
+                        <Button 
+                          id="new-job-button" 
+                          onClick={() => setView('create-job')} 
+                          className="flex items-center gap-3 bg-primary hover:bg-primary/90 text-white rounded-[1.25rem] px-6 py-6 h-auto shadow-lg shadow-primary/25 transition-all hover:scale-105 active:scale-95 group border-none"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center group-hover:rotate-90 transition-transform">
+                            <Plus className="w-5 h-5" />
+                          </div>
+                          <span className="text-sm font-black uppercase tracking-widest">¿Qué Necesitás?</span>
                         </Button>
                       )}
                     </div>
@@ -4121,122 +4128,140 @@ export default function App() {
 
       {/* Smart Chatbot for Clients */}
       {profile?.role === 'client' && (
-        <div className="fixed bottom-6 right-6 z-[1001] flex flex-col items-end">
-          <AnimatePresence>
-            {isChatOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="mb-4 w-[350px] sm:w-[400px] h-[500px] bg-white rounded-[2.5rem] border border-border shadow-2xl flex flex-col overflow-hidden"
-              >
-                <div className="p-4 bg-primary text-white flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-sm">Resolve Assistant</h4>
-                      <p className="text-[10px] opacity-80">En línea ahora</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setIsChatOpen(false)} className="p-2 hover:bg-white/10 rounded-full">
-                    <Plus className="w-5 h-5 rotate-45" />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-                  {chatMessages.length === 0 && (
-                    <div className="text-center py-8">
-                      <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <MessageSquare className="w-6 h-6 text-primary/40" />
-                      </div>
-                      <p className="text-stone-500 text-xs px-8">¡Hola! 👋 Soy tu asistente inteligente. Puedo responder dudas o ayudarte a crear un pedido en segundos. ¿En qué puedo ayudarte?</p>
-                    </div>
-                  )}
-                  {chatMessages.map((m, i) => (
-                    <motion.div 
-                      key={i} 
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className={cn(
-                        "flex items-end gap-2",
-                        m.role === 'user' ? "justify-end" : "justify-start"
-                      )}
-                    >
-                      {m.role === 'assistant' && (
-                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
-                          <Sparkles className="w-3 h-3 text-primary" />
-                        </div>
-                      )}
-                      <div className={cn(
-                        "max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm",
-                        m.role === 'user' 
-                          ? "bg-primary text-white rounded-tr-none font-medium" 
-                          : "bg-white text-stone-800 rounded-tl-none border border-border"
-                      )}>
-                        {m.content}
-                      </div>
-                    </motion.div>
-                  ))}
-                  {isAiResponding && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex justify-start items-end gap-2"
-                    >
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
-                        <Sparkles className="w-3 h-3 text-primary animate-pulse" />
-                      </div>
-                      <div className="bg-white border border-border p-3.5 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-sm">
-                        <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-duration:0.8s]" />
-                        <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.2s]" />
-                        <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.4s]" />
-                      </div>
-                    </motion.div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const input = e.currentTarget.elements.namedItem('chat-input') as HTMLInputElement;
-                    handleChatSubmit(input.value);
-                    input.value = '';
-                  }}
-                  className="p-4 border-t border-border bg-stone-50"
+        <div className="fixed bottom-24 right-4 sm:bottom-8 sm:right-8 z-[1001] flex flex-col items-end pointer-events-none">
+          <div className="pointer-events-auto">
+            <AnimatePresence mode="popLayout">
+              {isChatOpen ? (
+                <motion.div
+                  key="chat-window"
+                  initial={{ opacity: 0, scale: 0.9, y: 20, transformOrigin: 'bottom right' }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                  className="mb-4 w-[calc(100vw-2rem)] sm:w-[400px] h-[500px] max-h-[70vh] bg-white rounded-[2.5rem] border border-border shadow-2xl flex flex-col overflow-hidden"
                 >
-                  <div className="flex gap-2">
-                    <input
-                      name="chat-input"
-                      placeholder="Escribe tu mensaje..."
-                      autoComplete="off"
-                      className="flex-1 bg-white border border-border px-4 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    />
-                    <Button size="icon" type="submit" disabled={isAiResponding}>
-                      <Send className="w-4 h-4" />
-                    </Button>
+                  <div className="p-4 bg-primary text-white flex items-center justify-between shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm">Coso</h4>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                          <p className="text-[10px] opacity-80 uppercase tracking-wider font-semibold">En línea</p>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setIsChatOpen(false)} 
+                      className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                    >
+                      <Plus className="w-5 h-5 rotate-45" />
+                    </button>
                   </div>
-                </form>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
-          <Button
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className="w-14 h-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 flex items-center justify-center p-0"
-          >
-            {isChatOpen ? (
-              <Plus className="w-6 h-6 rotate-45" />
-            ) : (
-              <div className="relative">
-                <MessageSquare className="w-6 h-6" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-sm" />
-              </div>
-            )}
-          </Button>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth bg-stone-50/50">
+                    {chatMessages.length === 0 && (
+                      <div className="text-center py-12 px-6">
+                        <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <MessageSquare className="w-8 h-8 text-primary/30" />
+                        </div>
+                        <h5 className="font-bold text-stone-800 mb-2">¿Cómo puedo ayudarte hoy?</h5>
+                        <p className="text-stone-500 text-xs leading-relaxed">
+                          Describe tu problema brevemente y yo me encargaré de interpretarlo para crear un pedido por vos.
+                        </p>
+                      </div>
+                    )}
+                    {chatMessages.map((m, i) => (
+                      <motion.div 
+                        key={i} 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          "flex items-end gap-2",
+                          m.role === 'user' ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        {m.role === 'assistant' && (
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
+                            <Sparkles className="w-3 h-3 text-primary" />
+                          </div>
+                        )}
+                        <div className={cn(
+                          "max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm",
+                          m.role === 'user' 
+                            ? "bg-primary text-white rounded-tr-none font-medium" 
+                            : "bg-white text-stone-800 rounded-tl-none border border-border"
+                        )}>
+                          {m.content}
+                        </div>
+                      </motion.div>
+                    ))}
+                    {isAiResponding && (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex justify-start items-end gap-2"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
+                          <Sparkles className="w-3 h-3 text-primary animate-pulse" />
+                        </div>
+                        <div className="bg-white border border-border p-3.5 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-sm">
+                          <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-duration:0.8s]" />
+                          <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.2s]" />
+                          <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.4s]" />
+                        </div>
+                      </motion.div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const input = e.currentTarget.elements.namedItem('chat-input') as HTMLInputElement;
+                      handleChatSubmit(input.value);
+                      input.value = '';
+                    }}
+                    className="p-4 border-t border-border bg-white"
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        name="chat-input"
+                        placeholder="Describe el problema..."
+                        autoComplete="off"
+                        className="flex-1 bg-stone-100 border-none px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      />
+                      <Button size="icon" type="submit" disabled={isAiResponding} className="rounded-2xl w-12 h-12">
+                        <Send className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  </form>
+                </motion.div>
+              ) : (
+                <motion.button
+                  key="chat-toggle"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setIsChatOpen(true)}
+                  className={cn(
+                    "w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 bg-primary text-white"
+                  )}
+                >
+                  <div className="relative">
+                    <MessageSquare className="w-7 h-7" />
+                    {!chatMessages.length && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[8px] font-bold">1</span>
+                    )}
+                  </div>
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       )}
 
