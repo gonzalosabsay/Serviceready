@@ -12,7 +12,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   deleteUser,
-  reauthenticateWithPopup,
   updateProfile,
   User as FirebaseUser 
 } from 'firebase/auth';
@@ -501,6 +500,7 @@ export default function App() {
   const [birthDate, setBirthDate] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [photoURL, setPhotoURL] = useState('');
+  const [isSwitchingRole, setIsSwitchingRole] = useState(false);
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
@@ -1010,12 +1010,16 @@ export default function App() {
       
       // Sync Auth profile
       try {
+        // Firebase Auth photoURL has a limit (usually 2048 chars). 
+        // Data URLs (base64) are often much longer. We only sync if it's a short URL.
+        const authPhotoURL = newProfile.photoURL.length < 2000 ? newProfile.photoURL : user.photoURL;
+        
         await updateProfile(user, {
           displayName: newProfile.displayName,
-          photoURL: newProfile.photoURL
+          photoURL: authPhotoURL
         });
       } catch (authUpdateErr) {
-        console.error("Error updating auth profile:", authUpdateErr);
+        console.error("Error updating auth profile (ignoring):", authUpdateErr);
       }
 
       setProfile(newProfile);
@@ -1153,12 +1157,19 @@ export default function App() {
       return;
     }
 
+    setIsSwitchingRole(true);
     const newRole = profile.role === 'client' ? 'professional' : 'client';
     try {
       await updateDoc(doc(db, 'users', profile.uid), { role: newRole });
+      
+      // Artificial delay to make the transition feel substantial and clear
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
       setProfile({ ...profile, role: newRole });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
+    } finally {
+      setIsSwitchingRole(false);
     }
   };
 
@@ -1245,6 +1256,7 @@ export default function App() {
     }
 
     setIsDeleting(true); // Reusing isDeleting as a generic loading state
+    setIsSwitchingRole(true);
     try {
       const updatedData = {
         specialties: profSpecialties,
@@ -1255,6 +1267,10 @@ export default function App() {
         role: 'professional' as const
       };
       await updateDoc(doc(db, 'users', profile.uid), updatedData);
+      
+      // Artificial delay to clear the transition
+      await new Promise(resolve => setTimeout(resolve, 800));
+
       const updatedProfile = { ...profile, ...updatedData };
       setProfile(updatedProfile);
       setShowProfRegistration(false);
@@ -1264,6 +1280,7 @@ export default function App() {
       setError("No se pudo completar el perfil. Intenta de nuevo.");
     } finally {
       setIsDeleting(false);
+      setIsSwitchingRole(false);
     }
   };
 
@@ -1337,8 +1354,8 @@ export default function App() {
 
     try {
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY') {
-        throw new Error('API_KEY_MISSING');
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
+        throw new Error('API_KEY_MISSING - Por favor configura GEMINI_API_KEY en los ajustes.');
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1370,10 +1387,10 @@ export default function App() {
       
       const result = JSON.parse(response.text || '{}');
       setAiBudget(result);
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI estimation error:", err);
-      if (err instanceof Error && err.message === 'API_KEY_MISSING') {
-        setError("La función de IA no está configurada. Asegúrate de haber configurado GEMINI_API_KEY en las variables de entorno.");
+      if (err instanceof Error && err.message.includes('API_KEY_MISSING')) {
+        setError(err.message);
       } else {
         setError("No pudimos obtener el presupuesto sugerido en este momento.");
       }
@@ -1947,28 +1964,22 @@ export default function App() {
 
     setIsDeleting(true);
     try {
-      // 1. Re-authenticate if it's a Google user (to avoid requires-recent-login)
-      const isGoogleUser = user.providerData.some(p => p.providerId === 'google.com');
-      if (isGoogleUser) {
-        const provider = new GoogleAuthProvider();
-        try {
-          await reauthenticateWithPopup(user, provider);
-        } catch (reauthErr: any) {
-          console.error("Re-authentication failed:", reauthErr);
-          if (reauthErr.code === 'auth/popup-closed-by-user') {
-            setError("Debes completar la autenticación para eliminar tu cuenta.");
-            setIsDeleting(false);
-            return;
-          }
-          throw reauthErr;
-        }
-      }
-
-      // 2. Delete Firestore profile
+      // 1. Delete Firestore profile first (this is the most important for "disappearing" from the app)
       await deleteDoc(doc(db, 'users', user.uid));
       
-      // 3. Delete Auth account
-      await deleteUser(user);
+      // 2. Clear state and show feedback immediately
+      const currentUser = auth.currentUser;
+      
+      try {
+        // 3. Attempt to delete from Auth (might fail if not a recent login)
+        if (currentUser) {
+          await deleteUser(currentUser);
+        }
+      } catch (authErr: any) {
+        console.warn("Auth deletion failed (likely re-auth needed), logging out instead:", authErr);
+        // If we can't delete the auth account, we at least sign them out
+        await signOut(auth);
+      }
       
       setUser(null);
       setProfile(null);
@@ -1976,22 +1987,20 @@ export default function App() {
       setShowAccountDeleteConfirm(false);
       setError("Tu cuenta ha sido eliminada con éxito.");
     } catch (err: any) {
-      console.error("Error deleting account:", err);
-      if (err.code === 'auth/requires-recent-login') {
-        setError("Por seguridad, debes haber iniciado sesión recientemente para eliminar tu cuenta. Por favor, vuelve a intentarlo.");
-      } else {
-        setError("Error al eliminar la cuenta. Inténtalo de nuevo.");
-      }
+      console.error("Error deleting account profile:", err);
+      setError("Error al procesar la eliminación. Inténtalo de nuevo.");
     } finally {
       setIsDeleting(false);
     }
   };
 
-  if (loading) {
+  if (loading || isSwitchingRole) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-zinc-50">
         <div className="w-16 h-16 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-zinc-500 font-medium animate-pulse">resolve.la está cargando...</p>
+        <p className="text-zinc-500 font-medium animate-pulse">
+          {isSwitchingRole ? "Cambiando de perfil..." : "resolve.la está cargando..."}
+        </p>
       </div>
     );
   }

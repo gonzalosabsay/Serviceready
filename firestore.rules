@@ -16,7 +16,7 @@ service cloud.firestore {
     // 0.2 Application specific helpers
     function isAdmin() {
       return isSignedIn() && 
-        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com"]);
+        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com", "gonzalo.sabsay@bue.edu.ar", "gonzalosabsay@ifts18.edu.ar"]);
     }
 
     // 1. Validation Blueprints
@@ -33,13 +33,24 @@ service cloud.firestore {
              (!('isAdmin' in data) || data.isAdmin is bool);
     }
 
+    // This helper is for updates where we only check the fields present in the update
+    function isValidUserUpdate(data) {
+      return (!('uid' in data) || (data.uid is string && data.uid.size() <= 128)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('role' in data) || data.role in ['client', 'professional']) &&
+             (!('avgRating' in data) || data.avgRating == null || data.avgRating is number) &&
+             (!('numReviews' in data) || data.numReviews == null || data.numReviews is number) &&
+             (!('isAdmin' in data) || data.isAdmin is bool);
+    }
+
     function isValidJob(data) {
       return data.keys().hasAll(['clientId', 'category', 'title', 'description', 'status', 'location', 'createdAt']) &&
              data.clientId is string && data.clientId.size() <= 128 &&
              data.title is string && data.title.size() <= 200 &&
              data.description is string && data.description.size() <= 5000 &&
              data.status in ['Open', 'Assigned', 'Completed'] &&
-             (!('aiBudget' in data) || data.aiBudget is map);
+             data.location is map &&
+             (!('aiBudget' in data) || data.aiBudget == null || data.aiBudget is map);
     }
 
     function isValidBid(data) {
@@ -63,11 +74,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if (isOwner(userId) || isAdmin()) && isValidUser(incoming());
-      allow update: if (isValidUser(incoming()) && (
+      allow update: if (isValidUserUpdate(incoming()) && (
         isOwner(userId) || 
         isAdmin() || 
         (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['avgRating', 'numReviews']))
-      )) && (isAdmin() || incoming().role == existing().role);
+      ));
       allow delete: if isAdmin();
     }
 
