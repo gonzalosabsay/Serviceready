@@ -449,11 +449,26 @@ const DEFAULT_WORKING_HOURS = {
   '0': { start: '09:00', end: '18:00', active: false },
 };
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface DraftJobData {
+  title: string;
+  category: string;
+  description: string;
+}
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat' | 'agenda'>('home');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [draftJobData, setDraftJobData] = useState<DraftJobData | null>(null);
+  const [isAiResponding, setIsAiResponding] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -531,6 +546,13 @@ export default function App() {
   const categoriesRef = useRef<HTMLDivElement>(null);
   const jobRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const hasTriggeredTutorial = useRef<{ [key: string]: boolean }>({});
+
+  // Scroll to bottom of chat
+  useEffect(() => {
+    if (isChatOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatOpen]);
 
   // Auto-trigger tutorial
   useEffect(() => {
@@ -1340,6 +1362,7 @@ export default function App() {
     const form = (e.target as HTMLElement).closest('form') as HTMLFormElement;
     if (!form) return;
     
+    // Support pre-filled budget if data was already provided (e.g. from chatbot)
     const title = (form.querySelector('input[name="title"]') as HTMLInputElement)?.value;
     const description = (form.querySelector('textarea[name="description"]') as HTMLTextAreaElement)?.value;
     const category = (form.querySelector('select[name="category"]') as HTMLSelectElement)?.value;
@@ -1349,6 +1372,10 @@ export default function App() {
       return;
     }
 
+    await callAiBudgetApi(title, description, category);
+  };
+
+  const callAiBudgetApi = async (title: string, description: string, category: string) => {
     setIsAiEstimating(true);
     setAiBudget(null);
 
@@ -1399,6 +1426,96 @@ export default function App() {
     }
   };
 
+  const CHATBOT_SYSTEM_PROMPT = `
+    Eres Resolve Assistant, el chatbot oficial de resolve.la, una plataforma que conecta clientes con profesionales del hogar en Argentina (Plomeros, Electricistas, etc.).
+    Tu objetivo es ayudar al CLIENTE.
+    
+    FUNCIONES:
+    1. Responder dudas: Por qué resolve es seguro, cómo pedir presupuestos, qué categorías hay.
+    2. Sugerir crear pedidos: Si el usuario dice que tiene un problema, ofrécele guiarlo en el chat para crear la solicitud. 
+    
+    PROCESO DE CREACIÓN:
+    Pide los datos uno por uno o en conjunto:
+    - Categoría (debe ser una de: Plomería, Electricidad, Gasista, Aire Acondicionado, Limpieza, Construcción, Pintura, Jardinería, Fletes, Otros).
+    - Título del problema.
+    - Descripción detallada.
+    
+    Una vez recolectados, muestra un resumen y dí: "¿Deseas publicar este pedido ahora?".
+    
+    CRITICO:
+    Cuando el usuario acepte (diga "sí", "confirmar", "publicar", etc.), RESPONDE con este objeto JSON exacto incrustado al FINAL de tu mensaje de confirmación:
+    { "type": "JOB_READY", "data": { "category": "...", "title": "...", "description": "..." } }
+  `;
+
+  const handleChatSubmit = async (text: string) => {
+    if (!text.trim() || isAiResponding) return;
+
+    const newUserMessage: ChatMessage = { role: 'user', content: text };
+    setChatMessages(prev => [...prev, newUserMessage]);
+    setIsAiResponding(true);
+
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
+        throw new Error('API_KEY_MISSING');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const history = chatMessages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+
+      // Send message with system instructions context
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          ...history,
+          { role: 'user', parts: [{ text: `CONTEXTO SISTEMA: ${CHATBOT_SYSTEM_PROMPT}\n\nMENSAJE USUARIO: ${text}` }] }
+        ],
+        config: {
+          maxOutputTokens: 500,
+        }
+      });
+      
+      let assistantContent = result.text || "";
+
+      // Check for JSON trigger
+      const jsonMatch = assistantContent.match(/\{[\s\S]*"type":\s*"JOB_READY"[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const jobData = JSON.parse(jsonMatch[0]);
+          if (jobData.type === 'JOB_READY') {
+            setDraftJobData(jobData.data);
+            // Auto transition after a short delay
+            setTimeout(() => {
+              setChatMessages(prev => [...prev, { role: 'assistant', content: "¡Excelente! Te estoy redirigiendo al formulario con todo completado. Solo revisa y dale a 'Publicar'." }]);
+              setTimeout(() => {
+                setView('create-job');
+                setIsChatOpen(false);
+                // Trigger AI budget automatically
+                callAiBudgetApi(jobData.data.title, jobData.data.description, jobData.data.category);
+              }, 1500);
+            }, 500);
+          }
+          // Clean the message content from JSON for display
+          assistantContent = assistantContent.replace(jsonMatch[0], "").trim();
+        } catch (e) {
+          console.error("Error parsing job data from chat", e);
+        }
+      }
+
+      setChatMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
+    } catch (err: any) {
+      console.error("Chatbot error:", err);
+      let errorMsg = "Lo siento, tuve un problema al procesar tu mensaje.";
+      if (err.message === 'API_KEY_MISSING') errorMsg = "La IA no está configurada (Falta API Key).";
+      setChatMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+    } finally {
+      setIsAiResponding(false);
+    }
+  };
+
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!profile || isCreatingJob) return;
@@ -1425,6 +1542,7 @@ export default function App() {
       setView('home');
       setTempLocation(null);
       setSearchQuery('');
+      setDraftJobData(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'jobs');
     } finally {
@@ -2617,13 +2735,25 @@ export default function App() {
                     
                     <div className="space-y-2">
                       <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">¿Qué hay que hacer?</label>
-                      <Input name="title" placeholder="Ej: Plomero para arreglar filtración en cocina" required className="text-lg font-medium" />
+                      <Input 
+                        name="title" 
+                        defaultValue={draftJobData?.title || ''} 
+                        placeholder="Ej: Plomero para arreglar filtración en cocina" 
+                        required 
+                        className="text-lg font-medium" 
+                      />
                     </div>
                     
                     <div className="grid md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Categoría</label>
-                        <select name="category" className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-stone-50 text-sm font-medium appearance-none cursor-pointer" required>
+                        <select 
+                          name="category" 
+                          defaultValue={draftJobData?.category || ''}
+                          className="w-full px-4 py-3 rounded-2xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-stone-50 text-sm font-medium appearance-none cursor-pointer" 
+                          required
+                        >
+                          {!draftJobData?.category && <option value="">Selecciona una categoría</option>}
                           {CATEGORIES.map(cat => (
                             <optgroup key={cat.group} label={cat.group}>
                               <option value={cat.name}>{cat.name}</option>
@@ -2636,7 +2766,14 @@ export default function App() {
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-[11px] font-bold uppercase tracking-widest text-stone-400 ml-1">Descripción detallada</label>
-                        <TextArea name="description" placeholder="Explica qué necesitas, materiales, urgencia, etc." required className="min-h-[150px]" maxLength={500} />
+                        <TextArea 
+                          name="description" 
+                          defaultValue={draftJobData?.description || ''}
+                          placeholder="Explica qué necesitas, materiales, urgencia, etc." 
+                          required 
+                          className="min-h-[150px]" 
+                          maxLength={500} 
+                        />
                       </div>
                       
                       <div className="flex flex-col gap-3">
@@ -3975,6 +4112,109 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Smart Chatbot for Clients */}
+      {profile?.role === 'client' && (
+        <div className="fixed bottom-6 right-6 z-[1001] flex flex-col items-end">
+          <AnimatePresence>
+            {isChatOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="mb-4 w-[350px] sm:w-[400px] h-[500px] bg-white rounded-[2.5rem] border border-border shadow-2xl flex flex-col overflow-hidden"
+              >
+                <div className="p-4 bg-primary text-white flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">Resolve Assistant</h4>
+                      <p className="text-[10px] opacity-80">En línea ahora</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setIsChatOpen(false)} className="p-2 hover:bg-white/10 rounded-full">
+                    <Plus className="w-5 h-5 rotate-45" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+                  {chatMessages.length === 0 && (
+                    <div className="text-center py-8">
+                      <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <MessageSquare className="w-6 h-6 text-primary/40" />
+                      </div>
+                      <p className="text-stone-500 text-xs px-8">¡Hola! 👋 Soy tu asistente inteligente. Puedo responder dudas o ayudarte a crear un pedido en segundos. ¿En qué puedo ayudarte?</p>
+                    </div>
+                  )}
+                  {chatMessages.map((m, i) => (
+                    <div key={i} className={cn(
+                      "flex",
+                      m.role === 'user' ? "justify-end" : "justify-start"
+                    )}>
+                      <div className={cn(
+                        "max-w-[80%] p-3 rounded-2xl text-sm",
+                        m.role === 'user' 
+                          ? "bg-primary text-white rounded-tr-none" 
+                          : "bg-zinc-100 text-stone-800 rounded-tl-none border border-zinc-200 shadow-sm"
+                      )}>
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+                  {isAiResponding && (
+                    <div className="flex justify-start">
+                      <div className="bg-zinc-100 p-3 rounded-2xl rounded-tl-none border border-zinc-200 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" />
+                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = e.currentTarget.elements.namedItem('chat-input') as HTMLInputElement;
+                    handleChatSubmit(input.value);
+                    input.value = '';
+                  }}
+                  className="p-4 border-t border-border bg-stone-50"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      name="chat-input"
+                      placeholder="Escribe tu mensaje..."
+                      autoComplete="off"
+                      className="flex-1 bg-white border border-border px-4 py-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <Button size="icon" type="submit" disabled={isAiResponding}>
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <Button
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className="w-14 h-14 rounded-full shadow-2xl bg-primary hover:bg-primary/90 flex items-center justify-center p-0"
+          >
+            {isChatOpen ? (
+              <Plus className="w-6 h-6 rotate-45" />
+            ) : (
+              <div className="relative">
+                <MessageSquare className="w-6 h-6" />
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-sm" />
+              </div>
+            )}
+          </Button>
+        </div>
+      )}
 
       {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full z-[3000] shadow-xl">{error}</div>}
     </div>
