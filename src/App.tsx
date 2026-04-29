@@ -1427,24 +1427,21 @@ export default function App() {
   };
 
   const CHATBOT_SYSTEM_PROMPT = `
-    Eres Resolve Assistant, el chatbot oficial de resolve.la, una plataforma que conecta clientes con profesionales del hogar en Argentina (Plomeros, Electricistas, etc.).
-    Tu objetivo es ayudar al CLIENTE.
+    Eres Resolve Assistant, el chatbot de resolve.la.
+    TU MISIÓN: Ayudar al cliente de la forma más rápida y breve posible.
     
-    FUNCIONES:
-    1. Responder dudas: Por qué resolve es seguro, cómo pedir presupuestos, qué categorías hay.
-    2. Sugerir crear pedidos: Si el usuario dice que tiene un problema, ofrécele guiarlo en el chat para crear la solicitud. 
+    REGLA DE ORO: Responde en una o dos oraciones máximo. Sé directo y escueto.
     
-    PROCESO DE CREACIÓN:
-    Pide los datos uno por uno o en conjunto:
-    - Categoría (debe ser una de: Plomería, Electricidad, Gasista, Aire Acondicionado, Limpieza, Construcción, Pintura, Jardinería, Fletes, Otros).
-    - Título del problema.
-    - Descripción detallada.
+    FLUJO DE PEDIDO:
+    1. Si el usuario menciona un problema, pídele que describa qué pasa (en sus palabras).
+    2. NO pidas categoría ni título. Tú debes DEDUCIRLOS de su mensaje.
+    3. Categorías válidas: Plomería, Electricidad, Gasista, Aire Acondicionado, Limpieza, Construcción, Pintura, Jardinería, Fletes, Otros.
     
-    Una vez recolectados, muestra un resumen y dí: "¿Deseas publicar este pedido ahora?".
-    
-    CRITICO:
-    Cuando el usuario acepte (diga "sí", "confirmar", "publicar", etc.), RESPONDE con este objeto JSON exacto incrustado al FINAL de tu mensaje de confirmación:
-    { "type": "JOB_READY", "data": { "category": "...", "title": "...", "description": "..." } }
+    Cuando tengas la descripción clara:
+    - Muestra un resumen ultra breve (Categoría sugerida + Título).
+    - Pregunta: "¿Confirmas el pedido?"
+    - Si acepta, incluye este JSON al final:
+      { "type": "JOB_READY", "data": { "category": "Categoría Inferida", "title": "Título sugerido", "description": "Resumen de lo que dijo el usuario" } }
   `;
 
   const handleChatSubmit = async (text: string) => {
@@ -1457,7 +1454,7 @@ export default function App() {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
-        throw new Error('API_KEY_MISSING');
+        throw new Error('API_KEY_MISSING - Configura GEMINI_API_KEY.');
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1474,7 +1471,8 @@ export default function App() {
           { role: 'user', parts: [{ text: `CONTEXTO SISTEMA: ${CHATBOT_SYSTEM_PROMPT}\n\nMENSAJE USUARIO: ${text}` }] }
         ],
         config: {
-          maxOutputTokens: 500,
+          maxOutputTokens: 400,
+          temperature: 0.2,
         }
       });
       
@@ -4149,28 +4147,46 @@ export default function App() {
                     </div>
                   )}
                   {chatMessages.map((m, i) => (
-                    <div key={i} className={cn(
-                      "flex",
-                      m.role === 'user' ? "justify-end" : "justify-start"
-                    )}>
+                    <motion.div 
+                      key={i} 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                      className={cn(
+                        "flex items-end gap-2",
+                        m.role === 'user' ? "justify-end" : "justify-start"
+                      )}
+                    >
+                      {m.role === 'assistant' && (
+                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
+                          <Sparkles className="w-3 h-3 text-primary" />
+                        </div>
+                      )}
                       <div className={cn(
-                        "max-w-[80%] p-3 rounded-2xl text-sm",
+                        "max-w-[85%] p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm",
                         m.role === 'user' 
-                          ? "bg-primary text-white rounded-tr-none" 
-                          : "bg-zinc-100 text-stone-800 rounded-tl-none border border-zinc-200 shadow-sm"
+                          ? "bg-primary text-white rounded-tr-none font-medium" 
+                          : "bg-white text-stone-800 rounded-tl-none border border-border"
                       )}>
                         {m.content}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                   {isAiResponding && (
-                    <div className="flex justify-start">
-                      <div className="bg-zinc-100 p-3 rounded-2xl rounded-tl-none border border-zinc-200 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" />
-                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                        <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="flex justify-start items-end gap-2"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mb-1">
+                        <Sparkles className="w-3 h-3 text-primary animate-pulse" />
                       </div>
-                    </div>
+                      <div className="bg-white border border-border p-3.5 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-sm">
+                        <span className="w-1.5 h-1.5 bg-primary/40 rounded-full animate-bounce [animation-duration:0.8s]" />
+                        <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.2s]" />
+                        <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.4s]" />
+                      </div>
+                    </motion.div>
                   )}
                   <div ref={messagesEndRef} />
                 </div>
