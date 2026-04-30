@@ -43,6 +43,12 @@ export const Tutorial: React.FC<TutorialProps> = ({ isOpen, onClose, onComplete,
       icon: <Plus className="w-8 h-8 text-primary" />
     },
     {
+      title: "Conoce a Coso",
+      description: "Nuestro asistente inteligente está aquí para ayudarte. Puedes preguntarle cómo funciona la plataforma o pedirle que inicie un pedido por ti hablándole normalmente.",
+      targetId: "coso-chat-button",
+      icon: <MessageSquare className="w-8 h-8 text-primary" />
+    },
+    {
       title: "¿Qué pasa después?",
       description: "Una vez publicado, los profesionales te enviarán presupuestos. Podrás chatear con ellos para ajustar detalles y acordar un precio.",
       icon: <MessageSquare className="w-8 h-8 text-primary" />

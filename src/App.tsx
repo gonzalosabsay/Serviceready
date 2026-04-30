@@ -170,6 +170,7 @@ const CATEGORIES = [
   { group: "Carpintería y Acabados", name: "Carpintería de Madera" },
   { group: "Espacios Exteriores", name: "Jardinería y Paisajismo" },
   { group: "Limpieza y Desinfección", name: "Limpieza Especializada" },
+  { group: "Reparaciones del Hogar", name: "Maña (Arreglo de artefactos)" },
 ];
 
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -466,6 +467,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'home' | 'jobs' | 'messages' | 'profile' | 'create-job' | 'job-details' | 'chat' | 'agenda'>('home');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [draftJobData, setDraftJobData] = useState<DraftJobData | null>(null);
   const [isAiResponding, setIsAiResponding] = useState(false);
@@ -1382,7 +1384,7 @@ export default function App() {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
-        throw new Error('API_KEY_MISSING - Por favor configura GEMINI_API_KEY en los ajustes.');
+        throw new Error('CONFIGURACIÓN_PENDIENTE: Por favor, ve a Ajustes (icono de engranaje) -> Environment Variables y agrega GEMINI_API_KEY seleccionando tu clave del Free Tier.');
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1444,6 +1446,14 @@ export default function App() {
       { "type": "JOB_READY", "data": { "category": "Categoría Inferida", "title": "Título sugerido", "description": "Resumen de lo que dijo el usuario" } }
   `;
 
+  useEffect(() => {
+    if (isChatOpen) {
+      setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 300);
+    }
+  }, [isChatOpen]);
+
   const handleChatSubmit = async (text: string) => {
     if (!text.trim() || isAiResponding) return;
 
@@ -1454,7 +1464,7 @@ export default function App() {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey || apiKey === 'undefined' || apiKey === 'MY_GEMINI_API_KEY' || apiKey === '') {
-        throw new Error('API_KEY_MISSING - La API Key de Gemini no está configurada.');
+        throw new Error('CONFIGURACIÓN_PENDIENTE: No se encontró la clave de IA. Agrégala en Settings -> Environment Variables -> GEMINI_API_KEY.');
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1507,8 +1517,8 @@ export default function App() {
     } catch (err: any) {
       console.error("Chatbot error details:", err);
       let errorMsg = "Lo siento, tuve un problema al procesar tu mensaje.";
-      if (err.message && err.message.includes('API_KEY_MISSING')) {
-        errorMsg = "La IA no está configurada. Por favor, configura GEMINI_API_KEY en los ajustes (Settings).";
+      if (err.message && (err.message.includes('API_KEY_MISSING') || err.message.includes('CONFIGURACIÓN_PENDIENTE'))) {
+        errorMsg = "La IA no está configurada. Por favor, ve a Ajustes (Settings) -> Environment Variables y agrega GEMINI_API_KEY seleccionando tu clave del Free Tier.";
       } else if (err.message && (err.message.includes('429') || err.message.includes('quota') || err.message.includes('exhausted'))) {
         errorMsg = "Se ha alcanzado el límite de uso de la IA gratuita. Por favor, espera un minuto o configura tu propia API Key en Settings.";
       } else if (err.message && (err.message.includes('503') || err.message.includes('high demand'))) {
@@ -4221,17 +4231,20 @@ export default function App() {
                     onSubmit={(e) => {
                       e.preventDefault();
                       const input = e.currentTarget.elements.namedItem('chat-input') as HTMLInputElement;
+                      if (!input.value.trim()) return;
                       handleChatSubmit(input.value);
                       input.value = '';
+                      input.focus();
                     }}
                     className="p-4 border-t border-border bg-white"
                   >
                     <div className="flex gap-2">
                       <input
+                        ref={chatInputRef}
                         name="chat-input"
                         placeholder="Describe el problema..."
                         autoComplete="off"
-                        className="flex-1 bg-stone-100 border-none px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        className="flex-1 bg-stone-100 border-none px-4 py-3 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-stone-800"
                       />
                       <Button size="icon" type="submit" disabled={isAiResponding} className="rounded-2xl w-12 h-12">
                         <Send className="w-5 h-5" />
@@ -4248,6 +4261,7 @@ export default function App() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setIsChatOpen(true)}
+                  id="coso-chat-button"
                   className={cn(
                     "w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 bg-primary text-white"
                   )}
