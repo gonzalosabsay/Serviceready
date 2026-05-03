@@ -1498,38 +1498,52 @@ export default function App() {
         config: {
           systemInstruction: CHATBOT_SYSTEM_PROMPT,
           maxOutputTokens: 2048,
-          temperature: 0.2,
+          temperature: 0.1,
         }
       });
       
       let assistantContent = result.text || "";
+      let cleanContent = assistantContent;
 
-      // Check for JSON trigger - search specifically for the JOB_READY pattern
-      const jsonMatch = assistantContent.match(/\{[\s\S]*?"type":\s*"JOB_READY"[\s\S]*?\}/);
+      // Extract JSON if present
+      const jsonPattern = /\{[\s\S]*?"type"\s*:\s*"JOB_READY"[\s\S]*?\}/;
+      const jsonMatch = assistantContent.match(jsonPattern);
+      
       if (jsonMatch) {
         try {
-          const jobData = JSON.parse(jsonMatch[0]);
-          if (jobData.type === 'JOB_READY') {
+          const jsonString = jsonMatch[0];
+          const jobData = JSON.parse(jsonString);
+          
+          if (jobData.type === 'JOB_READY' && jobData.data) {
             setDraftJobData(jobData.data);
-            // Auto transition after a short delay
+            
+            // Clean content for display
+            cleanContent = assistantContent.replace(jsonString, "").trim();
+            if (!cleanContent) {
+              cleanContent = "¡Excelente! Procesando tu pedido. Te estoy redirigiendo al formulario...";
+            }
+
+            // Execute transition
             setTimeout(() => {
-              setChatMessages(prev => [...prev, { role: 'assistant', content: "¡Excelente! Te estoy redirigiendo al formulario con todo completado. Solo revisa y dale a 'Publicar'." }]);
-              setTimeout(() => {
-                setView('create-job');
-                setIsChatOpen(false);
-                // Trigger AI budget automatically
-                callAiBudgetApi(jobData.data.title, jobData.data.description, jobData.data.category);
-              }, 1500);
-            }, 500);
+              setView('create-job');
+              setIsChatOpen(false);
+              // Trigger AI budget automatically
+              if (jobData.data.title && jobData.data.category) {
+                callAiBudgetApi(jobData.data.title, jobData.data.description || "", jobData.data.category);
+              }
+            }, 1800);
           }
-          // Clean the message content from JSON for display
-          assistantContent = assistantContent.replace(jsonMatch[0], "").trim();
         } catch (e) {
-          console.error("Error parsing job data from chat", e);
+          console.error("Error parsing job data from chat JSON", e);
         }
       }
 
-      setChatMessages(prev => [...prev, { role: 'assistant', content: assistantContent }]);
+      setChatMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: cleanContent,
+        id: Date.now().toString(),
+        timestamp: new Date()
+      }]);
     } catch (err: any) {
       console.error("Chatbot error details:", err);
       let errorMsg = "Lo siento, tuve un problema al procesar tu mensaje.";
