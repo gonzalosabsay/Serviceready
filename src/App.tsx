@@ -1505,36 +1505,38 @@ export default function App() {
       let assistantContent = result.text || "";
       let cleanContent = assistantContent;
 
-      // Extract JSON if present
-      const jsonPattern = /\{[\s\S]*?"type"\s*:\s*"JOB_READY"[\s\S]*?\}/;
+      // Extract JSON if present - use greedy match for the closing brace to handle nested objects
+      const jsonPattern = /\{[\s\S]*?"type"\s*:\s*"JOB_READY"[\s\S]*\}/;
       const jsonMatch = assistantContent.match(jsonPattern);
       
       if (jsonMatch) {
+        const jsonString = jsonMatch[0];
+        // Always try to clean the content first so the user doesn't see the JSON block
+        cleanContent = assistantContent.replace(jsonString, "").trim();
+        if (!cleanContent) {
+          cleanContent = "¡Excelente! Preparando tu pedido...";
+        }
+
         try {
-          const jsonString = jsonMatch[0];
           const jobData = JSON.parse(jsonString);
           
           if (jobData.type === 'JOB_READY' && jobData.data) {
             setDraftJobData(jobData.data);
             
-            // Clean content for display
-            cleanContent = assistantContent.replace(jsonString, "").trim();
-            if (!cleanContent) {
-              cleanContent = "¡Excelente! Procesando tu pedido. Te estoy redirigiendo al formulario...";
-            }
-
             // Execute transition
             setTimeout(() => {
               setView('create-job');
               setIsChatOpen(false);
-              // Trigger AI budget automatically
+              // Trigger AI budget automatically if data is valid
               if (jobData.data.title && jobData.data.category) {
                 callAiBudgetApi(jobData.data.title, jobData.data.description || "", jobData.data.category);
               }
-            }, 1800);
+            }, 1000);
           }
         } catch (e) {
           console.error("Error parsing job data from chat JSON", e);
+          // Fallback: If parsing failed but we know it's a JOB_READY signal, try to clean it anyway
+          // and maybe the user can finish it manually in the create-job view if we managed to set some state
         }
       }
 
