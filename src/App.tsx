@@ -1429,29 +1429,32 @@ export default function App() {
   };
 
   const CHATBOT_SYSTEM_PROMPT = `
-    Eres Coso, el asistente inteligente de resolve.la.
-    TU OBJETIVO: Convertir la charla del usuario en un pedido de trabajo publicado rápidamente.
+    Eres Coso, el asistente de resolve.la. Tu misión es guiar al usuario a publicar un pedido siguiendo este PROCEDIMIENTO ESTRICTO:
     
-    REGLAS:
-    1. Sé breve (1-2 frases). No des consejos técnicos.
-    2. Categorías VÁLIDAS (Usa EXACTAMENTE estos nombres):
-       - Plomería y Fontanería
-       - Electricidad Residencial
-       - Pintura e Impermeabilización
-       - Albañilería y Obra Civil
-       - Cerrajería de Emergencia
-       - Carpintería de Madera
-       - Jardinería y Paisajismo
-       - Limpieza Especializada
-       - Maña (Arreglo de artefactos)
+    PASO 1: Si el usuario pregunta cómo pedir o saluda, dile que puede hacerlo por este chat y pregúntale: "¿Qué problema necesitás resolver?"
     
-    FLUJO:
-    - Si el usuario menciona un problema, deduce la categoría de la lista anterior, inventa un título y genera el pedido.
-    - Si el problema es ambiguo o no encaja perfecto, usa "Maña (Arreglo de artefactos)".
+    PASO 2: Cuando el usuario describa el problema (ej: "tengo una gotera"), tú debes sugerir un Título y preguntar confirmación.
+       Ejemplo: "Entendido. Sugiero el título: 'Reparación de gotera en cocina'. ¿Querés que lo publiquemos con esa info?"
+       IMPORTANTE: En este paso NO envíes el JSON aún. Solo sugiere el título y espera confirmación.
     
-    PARA GENERAR EL PEDIDO:
-    Al final de tu respuesta breve, añade SIEMPRE este JSON:
-    { "type": "JOB_READY", "data": { "category": "Nombre exacto de la categoría", "title": "Título sugerido", "description": "Resumen breve" } }
+    PASO 3: Solo si el usuario CONFIRMA explícitamente (dice sí, dale, ok, confirmar, etc.), genera el pedido.
+       Debes responder algo breve ("¡Perfecto! Generando pedido...") e incluir el JSON al final.
+       
+    JSON DE SALIDA (Solo en Paso 3):
+    { "type": "JOB_READY", "data": { "category": "Categoría Exacta", "title": "Título Confirmado", "description": "Descripción del problema" } }
+    
+    CATEGORÍAS VÁLIDAS (Usa exactamente estas):
+    - Plomería y Fontanería
+    - Electricidad Residencial
+    - Pintura e Impermeabilización
+    - Albañilería y Obra Civil
+    - Cerrajería de Emergencia
+    - Carpintería de Madera
+    - Jardinería y Paisajismo
+    - Limpieza Especializada
+    - Maña (Arreglo de artefactos) -> Usa esta para ventiladores, electrodomésticos, y cosas generales del hogar.
+    
+    REGLA DE ORO: No saltes pasos. No envíes el JSON si el usuario no ha confirmado el título sugerido. Sé breve y directo.
   `;
 
   useEffect(() => {
@@ -1476,28 +1479,33 @@ export default function App() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
-      const history = chatMessages.map(m => ({
+      
+      // Filter out empty messages and only take the last 10 messages for context efficiency
+      const relevantMessages = chatMessages.slice(-10);
+      
+      const history = relevantMessages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       }));
 
-      // Send message with system instructions context
+      // Send the current message with system context.
       const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [
           ...history,
-          { role: 'user', parts: [{ text: `CONTEXTO SISTEMA: ${CHATBOT_SYSTEM_PROMPT}\n\nMENSAJE USUARIO: ${text}` }] }
+          { role: 'user', parts: [{ text: text }] }
         ],
         config: {
-          maxOutputTokens: 400,
+          systemInstruction: CHATBOT_SYSTEM_PROMPT,
+          maxOutputTokens: 2048,
           temperature: 0.2,
         }
       });
       
       let assistantContent = result.text || "";
 
-      // Check for JSON trigger
-      const jsonMatch = assistantContent.match(/\{[\s\S]*"type":\s*"JOB_READY"[\s\S]*\}/);
+      // Check for JSON trigger - search specifically for the JOB_READY pattern
+      const jsonMatch = assistantContent.match(/\{[\s\S]*?"type":\s*"JOB_READY"[\s\S]*?\}/);
       if (jsonMatch) {
         try {
           const jobData = JSON.parse(jsonMatch[0]);
