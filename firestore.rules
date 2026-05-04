@@ -97,14 +97,14 @@ service cloud.firestore {
       allow read: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && isValidBid(incoming()) && incoming().professionalId == request.auth.uid;
       allow update: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.professionalId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid));
     }
 
     match /messages/{messageId} {
       allow read: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
       allow update: if isSignedIn() && (resource.data.recipientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid));
     }
 
     match /appointments/{appointmentId} {

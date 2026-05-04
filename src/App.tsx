@@ -163,6 +163,7 @@ const MapController = ({ center, zoom, displayMode }: { center: [number, number]
 
 const CATEGORIES = [
   { group: "Mantenimiento Técnico", name: "Plomería y Fontanería" },
+  { group: "Energía y Clima", name: "Gasista Matriculado" },
   { group: "Energía y Clima", name: "Electricidad Residencial" },
   { group: "Remodelación y Estética", name: "Pintura e Impermeabilización" },
   { group: "Construcción Estructural", name: "Albañilería y Obra Civil" },
@@ -170,7 +171,7 @@ const CATEGORIES = [
   { group: "Carpintería y Acabados", name: "Carpintería de Madera" },
   { group: "Espacios Exteriores", name: "Jardinería y Paisajismo" },
   { group: "Limpieza y Desinfección", name: "Limpieza Especializada" },
-  { group: "Reparaciones del Hogar", name: "Maña (Arreglo de artefactos)" },
+  { group: "Reparaciones del Hogar", name: "Mañas" },
 ];
 
 const Input = ({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
@@ -1445,6 +1446,7 @@ export default function App() {
     
     CATEGORÍAS VÁLIDAS (Usa exactamente estas):
     - Plomería y Fontanería
+    - Gasista Matriculado
     - Electricidad Residencial
     - Pintura e Impermeabilización
     - Albañilería y Obra Civil
@@ -1452,7 +1454,7 @@ export default function App() {
     - Carpintería de Madera
     - Jardinería y Paisajismo
     - Limpieza Especializada
-    - Maña (Arreglo de artefactos) -> Usa esta para ventiladores, electrodomésticos, y cosas generales del hogar.
+    - Mañas -> Usa esta para ventiladores, electrodomésticos, y cosas generales del hogar.
     
     REGLA DE ORO: No saltes pasos. No envíes el JSON si el usuario no ha confirmado el título sugerido. Sé breve y directo.
   `;
@@ -2809,9 +2811,17 @@ export default function App() {
                           required
                         >
                           {!draftJobData?.category && <option value="">Selecciona una categoría</option>}
-                          {CATEGORIES.map(cat => (
-                            <optgroup key={cat.group} label={cat.group}>
-                              <option value={cat.name}>{cat.name}</option>
+                          {Object.entries(
+                            CATEGORIES.reduce((acc, cat) => {
+                              if (!acc[cat.group]) acc[cat.group] = [];
+                              acc[cat.group].push(cat);
+                              return acc;
+                            }, {} as Record<string, typeof CATEGORIES>)
+                          ).map(([group, items]) => (
+                            <optgroup key={group} label={group}>
+                              {items.map(cat => (
+                                <option key={cat.name} value={cat.name}>{cat.name}</option>
+                              ))}
                             </optgroup>
                           ))}
                         </select>
@@ -3243,7 +3253,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {profile?.role === 'client' && !activeAppointment && !isChatClosed && (
+                  {profile?.role === 'client' && profile?.uid === selectedBid.clientId && !activeAppointment && !isChatClosed && (
                     <Button 
                       variant="ghost" 
                       onClick={() => setShowAppointmentModal(true)}
@@ -3293,13 +3303,13 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     {activeAppointment.status === 'Accepted' && parseISO(activeAppointment.endTime) <= new Date() && (
                       <>
-                        {((profile?.role === 'client' && !activeAppointment.clientConfirmedCompletion) || 
-                          (profile?.role === 'professional' && !activeAppointment.professionalConfirmedCompletion)) ? (
+                        {((profile?.uid === activeAppointment.clientId && !activeAppointment.clientConfirmedCompletion) || 
+                          (profile?.uid === activeAppointment.professionalId && !activeAppointment.professionalConfirmedCompletion)) ? (
                           <Button 
                             onClick={() => handleUpdateAppointmentStatus(activeAppointment.id, 'Completed')}
                             className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest bg-primary"
                           >
-                            {profile?.role === 'client' && activeAppointment.professionalConfirmedPrice ? 'Confirmar y Pagar' : 'Confirmar Visita'}
+                            {profile?.uid === activeAppointment.clientId && activeAppointment.professionalConfirmedPrice ? 'Confirmar y Pagar' : 'Confirmar Visita'}
                           </Button>
                         ) : (
                           <div className="px-3 py-1.5 bg-stone-100 rounded-lg border border-stone-200">
@@ -3310,6 +3320,9 @@ export default function App() {
                     )}
 
                     {activeAppointment.status === 'Completed' && (
+                      (profile?.uid === activeAppointment.clientId && !activeAppointment.clientRated) || 
+                      (profile?.uid === activeAppointment.professionalId && !activeAppointment.professionalRated)
+                    ) && (
                       <Button 
                         onClick={() => {
                           setRatingAppointment(activeAppointment);
