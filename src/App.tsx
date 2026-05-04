@@ -41,6 +41,7 @@ import {
   Job, 
   Bid, 
   Message, 
+  Review,
   Appointment,
   AppointmentStatus,
   JobStatus,
@@ -160,6 +161,22 @@ const MapController = ({ center, zoom, displayMode }: { center: [number, number]
 
   return null;
 };
+
+const PROF_RATING_CRITERIA = [
+  'Puntualidad',
+  'Calidad del trabajo',
+  'Organización y Limpieza',
+  'Comunicación y Trato',
+  'Relación Precio-Calidad'
+];
+
+const CLIENT_RATING_CRITERIA = [
+  'Claridad en la solicitud',
+  'Cumplimiento de la cita',
+  'Respeto y Trato',
+  'Facilidad para el trabajo',
+  'Gestión del pago'
+];
 
 const CATEGORIES = [
   { group: "Mantenimiento Técnico", name: "Plomería y Fontanería" },
@@ -317,7 +334,188 @@ const WorkingHoursManager = ({ hours, onChange }: { hours: UserProfile['workingH
   );
 };
 
-const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile | null, isOpen: boolean, onClose: () => void }) => {
+const Stars = ({ rating }: { rating: number }) => (
+  <div className="flex gap-0.5">
+    {[1, 2, 3, 4, 5].map((star) => (
+      <Star 
+        key={star} 
+        className={cn(
+          "w-3 h-3", 
+          star <= Math.round(rating) ? "text-yellow-500 fill-yellow-500" : "text-stone-200 fill-stone-200"
+        )} 
+      />
+    ))}
+  </div>
+);
+
+const ReviewList = ({ userId }: { userId: string }) => {
+  const [reviews, setReviews] = useState<(Review & { reviewer?: UserProfile })[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'reviews'),
+      where('reviewedId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const reviewData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Review));
+      
+      const enrichedReviews = await Promise.all(
+        reviewData.map(async (review) => {
+          const reviewerSnap = await getDoc(doc(db, 'users', review.reviewerId));
+          return {
+            ...review,
+            reviewer: reviewerSnap.exists() ? reviewerSnap.data() as UserProfile : undefined
+          };
+        })
+      );
+
+      setReviews(enrichedReviews);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'reviews');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-4">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">Cargando reseñas...</p>
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div className="text-center py-12 px-6">
+        <div className="w-16 h-16 bg-stone-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-stone-100">
+          <Star className="w-8 h-8 text-stone-300" />
+        </div>
+        <p className="text-stone-500 font-medium">Aún no hay reseñas para este usuario.</p>
+      </div>
+    );
+  }
+
+  const average = reviews.reduce((acc, r) => acc + r.stars, 0) / reviews.length;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center justify-between mb-6 bg-stone-50 p-4 rounded-3xl border border-stone-100">
+        <div>
+          <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1">Promedio General</span>
+          <div className="flex items-center gap-2">
+            <span className="text-3xl font-black text-stone-900">{average.toFixed(1)}</span>
+            <div className="flex flex-col">
+              <Stars rating={average} />
+              <span className="text-[9px] font-bold text-stone-400 uppercase leading-none mt-1">{reviews.length} opiniones</span>
+            </div>
+          </div>
+        </div>
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+          <CheckCircle className="w-6 h-6 text-green-500" />
+        </div>
+      </div>
+
+      <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        {reviews.map((review) => (
+          <div key={review.id} className="p-5 bg-stone-50/50 rounded-[2rem] border border-stone-100/50 shelf-shadow transition-all hover:bg-white hover:border-primary/20">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-stone-200 overflow-hidden border-2 border-white shadow-sm">
+                  {review.reviewer?.photoURL ? (
+                    <img src={review.reviewer.photoURL} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-stone-100 text-stone-400">
+                      <UserIcon className="w-5 h-5" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-black text-stone-900 leading-tight">{review.reviewer?.displayName || 'Usuario Anónimo'}</p>
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                    {formatDistanceToNow(new Date(review.createdAt), { addSuffix: true, locale: es })}
+                  </p>
+                </div>
+              </div>
+              <Stars rating={review.stars} />
+            </div>
+            <p className="text-stone-600 text-sm leading-relaxed italic">"{review.comment}"</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ReputationCard = ({ rating, count, onClick, label = "Reputación" }: { rating?: number, count?: number, onClick: () => void, label?: string }) => (
+  <button 
+    onClick={onClick}
+    className="w-full flex items-center justify-between p-5 bg-white rounded-3xl shelf-shadow border border-stone-100 hover:border-primary/30 hover:bg-stone-50/50 transition-all group cursor-pointer relative overflow-hidden"
+  >
+    <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-8 -mt-8 blur-2xl group-hover:bg-primary/10 transition-colors" />
+    <div className="relative z-10 flex flex-col items-start translate-x-0 group-hover:translate-x-1 transition-transform">
+      <span className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-1 leading-none">{label}</span>
+      <div className="flex items-center gap-2">
+        <div className="bg-yellow-400/10 p-1 rounded-lg">
+          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500 group-hover:rotate-12 transition-transform" />
+        </div>
+        <span className="text-xl font-black text-stone-900 leading-none">{rating?.toFixed(1) || '0.0'}</span>
+      </div>
+    </div>
+    <div className="relative z-10 text-right">
+      <div className="bg-primary/10 px-2.5 py-1 rounded-full border border-primary/20 mb-1 inline-block">
+        <span className="text-[9px] font-black text-primary uppercase tracking-wider">{count || 0} RESEÑAS</span>
+      </div>
+      <p className="text-[9px] font-bold text-stone-400 group-hover:text-primary transition-colors flex items-center justify-end gap-1 uppercase">Ver historial <ChevronRight className="w-3 h-3" /></p>
+    </div>
+  </button>
+);
+
+const ReviewsModal = ({ userId, isOpen, onClose, userName }: { userId: string | null, isOpen: boolean, onClose: () => void, userName?: string }) => {
+  if (!isOpen || !userId) return null;
+
+  return (
+    <div className="fixed inset-0 z-[4000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-white rounded-[3rem] p-8 max-w-lg w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[85vh]"
+      >
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-yellow-400 to-primary"></div>
+        
+        <Button 
+          variant="ghost" 
+          onClick={onClose}
+          className="absolute top-6 right-6 w-10 h-10 rounded-full bg-stone-50 hover:bg-stone-100 flex items-center justify-center p-0 z-10"
+        >
+          <X className="w-5 h-5 text-stone-500" />
+        </Button>
+
+        <div className="mb-8 pr-12">
+          <h3 className="text-2xl font-black text-stone-900 mb-1 leading-tight">Reputación y Opiniones</h3>
+          {userName && <p className="text-stone-400 text-xs font-bold uppercase tracking-[0.2em]">Para {userName}</p>}
+        </div>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <ReviewList userId={userId} />
+        </div>
+        
+        <div className="mt-8 pt-6 border-t border-stone-100 flex justify-center">
+          <p className="text-[10px] font-bold text-stone-300 uppercase tracking-[0.3em]">Resolvela Trust System</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const UserProfileModal = ({ profile, isOpen, onClose, onShowReviews }: { profile: UserProfile | null, isOpen: boolean, onClose: () => void, onShowReviews: (uid: string, name: string) => void }) => {
   if (!isOpen || !profile) return null;
 
   return (
@@ -353,7 +551,7 @@ const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile |
 
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-3xl font-black text-stone-900">{profile.displayName}</h2>
+              <h2 className="text-3xl font-black text-stone-900 leading-tight">{profile.displayName}</h2>
               <Badge variant={profile.role === 'professional' ? 'success' : 'info'} className="text-[10px] uppercase tracking-widest font-black">
                 {profile.role === 'professional' ? 'Profesional' : 'Cliente'}
               </Badge>
@@ -362,19 +560,16 @@ const UserProfileModal = ({ profile, isOpen, onClose }: { profile: UserProfile |
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100">
+            <div className="p-4 bg-stone-50 rounded-[1.5rem] border border-stone-100 flex flex-col justify-center">
               <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1">Miembro desde</span>
-              <p className="text-sm font-bold text-stone-700">Recientemente</p>
+              <p className="text-sm font-bold text-stone-700">Mayo 2024</p>
             </div>
-            {profile.role === 'professional' && (
-              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                <span className="text-[10px] font-black text-primary/60 uppercase tracking-widest block mb-1">Calificación</span>
-                <div className="flex items-center gap-1">
-                  <Star className="w-4 h-4 text-primary fill-primary" />
-                  <p className="text-sm font-bold text-primary">{profile.avgRating?.toFixed(1) || 'N/A'}</p>
-                </div>
-              </div>
-            )}
+            <ReputationCard 
+              rating={profile.avgRating} 
+              count={profile.numReviews} 
+              onClick={() => onShowReviews(profile.uid, profile.displayName)}
+              label="Opiniones"
+            />
           </div>
 
           {profile.role === 'professional' && profile.specialties && profile.specialties.length > 0 && (
@@ -522,6 +717,7 @@ export default function App() {
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showProfRegistration, setShowProfRegistration] = useState(false);
+  const [reviewsModal, setReviewsModal] = useState<{ userId: string, userName: string } | null>(null);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [profSpecialties, setProfSpecialties] = useState<string[]>([]);
@@ -1718,7 +1914,7 @@ export default function App() {
     }
   };
 
-  const submitRating = async (stars: number, comment: string) => {
+  const submitRating = async (stars: number, comment: string, detailedRatings: Record<string, number>) => {
     if (!profile || !ratingAppointment) return;
     try {
       const reviewerId = profile.uid;
@@ -1731,6 +1927,7 @@ export default function App() {
         reviewedId,
         jobId,
         stars,
+        detailedRatings,
         comment,
         createdAt: new Date().toISOString()
       });
@@ -3528,23 +3725,14 @@ export default function App() {
                   </div>
                   <h3 className="text-3xl font-black text-stone-900 mb-1">{profile?.displayName}</h3>
                   <p className="text-stone-400 text-xs font-bold uppercase tracking-[0.2em] mb-1">@{profile?.username}</p>
-                  <p className="text-stone-500 text-sm font-medium mb-6">{profile?.email}</p>
+                  <p className="text-stone-500 text-sm font-medium mb-8">{profile?.email}</p>
                   
-                  <div className="flex items-center gap-6">
-                    <div className="flex flex-col items-center">
-                      <div className="flex items-center gap-1.5 bg-yellow-400/10 px-4 py-2 rounded-2xl border border-yellow-400/20">
-                        <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                        <span className="font-black text-yellow-700 text-lg">{profile?.avgRating || 0}</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Calificación</span>
-                    </div>
-                    <div className="w-px h-10 bg-border" />
-                    <div className="flex flex-col items-center">
-                      <div className="bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20">
-                        <span className="font-black text-primary text-lg">{profile?.numReviews || 0}</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-stone-400 uppercase mt-2 tracking-widest">Reseñas</span>
-                    </div>
+                  <div className="max-w-sm mx-auto mb-8">
+                    <ReputationCard 
+                      rating={profile?.avgRating} 
+                      count={profile?.numReviews} 
+                      onClick={() => setReviewsModal({ userId: profile?.uid || '', userName: profile?.displayName || '' })}
+                    />
                   </div>
                 </div>
 
@@ -3984,6 +4172,16 @@ export default function App() {
             profile={viewingProfile} 
             isOpen={!!viewingProfile} 
             onClose={() => setViewingProfile(null)} 
+            onShowReviews={(uid, name) => setReviewsModal({ userId: uid, userName: name })}
+          />
+        )}
+
+        {reviewsModal && (
+          <ReviewsModal 
+            userId={reviewsModal.userId}
+            userName={reviewsModal.userName}
+            isOpen={!!reviewsModal}
+            onClose={() => setReviewsModal(null)}
           />
         )}
 
@@ -4684,8 +4882,16 @@ const AppointmentModal = ({ isOpen, onClose, bid, profile, existingAppointments,
   );
 };
 
-const RatingModal = ({ isOpen, onClose, appointment, profile, onSubmit }: { isOpen: boolean, onClose: () => void, appointment: Appointment, profile: UserProfile, onSubmit: (stars: number, comment: string) => void }) => {
-  const [stars, setStars] = useState(5);
+const RatingModal = ({ isOpen, onClose, appointment, profile, onSubmit }: { isOpen: boolean, onClose: () => void, appointment: Appointment, profile: UserProfile, onSubmit: (stars: number, comment: string, detailedRatings: Record<string, number>) => void }) => {
+  const criteria = profile.role === 'client' ? PROF_RATING_CRITERIA : CLIENT_RATING_CRITERIA;
+  
+  // Initialize all criteria with 5 stars
+  const [ratings, setRatings] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {};
+    criteria.forEach(c => initial[c] = 5);
+    return initial;
+  });
+  
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -4693,67 +4899,110 @@ const RatingModal = ({ isOpen, onClose, appointment, profile, onSubmit }: { isOp
 
   const otherUser = appointment.otherUser;
 
+  // Calculate overall average
+  const overallRating = (Object.values(ratings) as number[]).reduce((acc: number, r: number) => acc + r, 0) / criteria.length;
+
   return (
     <div className="fixed inset-0 z-[5000] flex justify-center items-center p-4 bg-black/60 backdrop-blur-sm">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white w-full max-w-md rounded-[3rem] overflow-hidden shadow-2xl relative"
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white w-full max-w-lg rounded-[3rem] overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]"
       >
-        <div className="p-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-black text-stone-900">Calificar Encuentro</h2>
-            <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
-              <X className="w-6 h-6 text-stone-400" />
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-yellow-400 to-primary"></div>
+        
+        <div className="p-8 overflow-y-auto custom-scrollbar">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl font-black text-stone-900 leading-tight">Evaluar Experiencia</h2>
+              <p className="text-stone-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">Feedback mutuo Resolvela</p>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-stone-50 rounded-full transition-colors">
+              <X className="w-5 h-5 text-stone-400" />
             </button>
           </div>
 
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-20 h-20 rounded-2xl overflow-hidden mb-4 border-2 border-primary/20">
-              <img src={otherUser?.photoURL} alt="" className="w-full h-full object-cover" />
+          <div className="flex items-center gap-4 mb-8 bg-stone-50 p-4 rounded-3xl border border-stone-100">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-sm shrink-0">
+              {otherUser?.photoURL ? (
+                <img src={otherUser.photoURL} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-100 text-stone-400">
+                  <UserIcon className="w-8 h-8" />
+                </div>
+              )}
             </div>
-            <h3 className="text-lg font-bold text-stone-900">{otherUser?.displayName}</h3>
-            <p className="text-xs text-stone-500 font-medium">¿Cómo fue tu experiencia?</p>
+            <div>
+              <h3 className="text-lg font-black text-stone-900 leading-tight">{otherUser?.displayName}</h3>
+              <p className="text-xs text-stone-500 font-medium">Finaliza el proceso puntuando estos aspectos:</p>
+            </div>
           </div>
 
-          <div className="flex justify-center gap-2 mb-8">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStars(s)}
-                className="p-1 transition-transform active:scale-90"
-              >
-                <Star 
-                  className={cn(
-                    "w-10 h-10 transition-colors",
-                    s <= stars ? "text-yellow-400 fill-yellow-400" : "text-stone-200"
-                  )} 
-                />
-              </button>
+          <div className="space-y-6 mb-10">
+            {criteria.map((item) => (
+              <div key={item} className="flex flex-col gap-3">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[11px] font-black text-stone-700 uppercase tracking-wider">{item}</span>
+                  <span className="text-xs font-black text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">{ratings[item]}</span>
+                </div>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setRatings(prev => ({ ...prev, [item]: s }))}
+                      className={cn(
+                        "flex-1 h-10 rounded-xl transition-all border flex items-center justify-center group",
+                        s <= ratings[item] ? "bg-primary/5 border-primary/20" : "bg-transparent border-stone-100"
+                      )}
+                    >
+                      <Star 
+                        className={cn(
+                          "w-5 h-5 transition-all",
+                          s <= ratings[item] ? "text-yellow-500 fill-yellow-500" : "text-stone-200"
+                        )} 
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 
-          <div className="space-y-4 mb-8">
-            <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block">Tu comentario</label>
+          <div className="bg-stone-900 rounded-[2.5rem] p-6 mb-10 shadow-xl shadow-stone-200">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Promedio General</span>
+              <Stars rating={overallRating} />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-black text-white">{overallRating.toFixed(1)}</span>
+              <span className="text-stone-400 text-sm font-bold">sobre 5.0</span>
+            </div>
+          </div>
+
+          <div className="space-y-4 mb-10">
+            <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest block ml-1">Observaciones adicionales</label>
             <TextArea 
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Escribe algo sobre el servicio..."
-              className="min-h-[100px]"
+              placeholder="¿Alguna aclaración importante sobre el encuentro?"
+              className="min-h-[100px] bg-stone-50 border-stone-100 rounded-3xl p-5"
             />
           </div>
 
           <Button 
             onClick={async () => {
               setIsSubmitting(true);
-              await onSubmit(stars, comment);
+              await onSubmit(overallRating, comment, ratings);
               setIsSubmitting(false);
+              onClose();
             }} 
             disabled={isSubmitting}
-            className="w-full py-4 rounded-2xl shadow-lg shadow-primary/20"
+            className="w-full py-8 text-lg font-black rounded-3xl shadow-2xl shadow-primary/30"
           >
-            {isSubmitting ? 'Enviando...' : 'Enviar Calificación'}
+            {isSubmitting ? 'Guardando evaluación...' : 'Finalizar y Calificar'}
           </Button>
+          
+          <p className="text-[9px] font-bold text-stone-300 text-center uppercase tracking-[0.3em] mt-8 mb-4">Sistema de Reputación Resolvela</p>
         </div>
       </motion.div>
     </div>

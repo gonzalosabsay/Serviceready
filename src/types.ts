@@ -92,6 +92,7 @@ export interface Review {
   reviewedId: string;
   jobId: string;
   stars: number;
+  detailedRatings: Record<string, number>;
   comment: string;
   createdAt: string;
 }
