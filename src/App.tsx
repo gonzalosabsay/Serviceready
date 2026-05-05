@@ -1989,6 +1989,27 @@ export default function App() {
           }
         }
         await updateDoc(doc(db, 'appointments', apptId), { status });
+        
+        // If it was the accepted appointment, check if we should reopen the job
+        if (appt.status === 'Accepted') {
+          try {
+            // Check if there are other accepted appointments for this job
+            const otherApptsQuery = query(
+              collection(db, 'appointments'),
+              where('jobId', '==', appt.jobId),
+              where('status', '==', 'Accepted')
+            );
+            const otherApptsSnap = await getDocs(otherApptsQuery);
+            if (otherApptsSnap.docs.length === 0) {
+              await updateDoc(doc(db, 'jobs', appt.jobId), { 
+                status: 'Open',
+                assignedProfessionalId: null
+              });
+            }
+          } catch (jobErr) {
+            console.error("Error reopening job:", jobErr);
+          }
+        }
       } else if (status === 'Completed') {
         const updateData: any = {};
         if (profile.role === 'client') {
@@ -2037,6 +2058,18 @@ export default function App() {
         return;
       } else {
         await updateDoc(doc(db, 'appointments', apptId), { status });
+        
+        // If appointment is accepted, update the job status to Assigned
+        if (status === 'Accepted') {
+          try {
+            await updateDoc(doc(db, 'jobs', appt.jobId), { 
+              status: 'Assigned',
+              assignedProfessionalId: appt.professionalId
+            });
+          } catch (jobErr) {
+            console.error("Error updating job status to Assigned:", jobErr);
+          }
+        }
       }
 
       // Send automatic message if cancelled
@@ -2111,33 +2144,82 @@ export default function App() {
 
   const deleteJob = async () => {
     if (!selectedJob) return;
-    console.log("Deleting job:", selectedJob.id);
+
+    // Check for active appointments before allowing deletion
+    // A client should not be able to delete a job if there is an Accepted appointment
+    const activeAppointment = appointments.find(a => 
+      a.jobId === selectedJob.id && 
+      a.status === 'Accepted'
+    );
+
+    if (activeAppointment && !profile?.isAdmin) {
+      setError("No puedes eliminar un pedido que ya tiene un turno agendado (Aceptado). Debes cancelar el turno primero.");
+      return;
+    }
+
+    console.log("Deleting job and all related resources. JobID:", selectedJob.id, "UserUID:", profile.uid);
     setIsDeleting(true);
     try {
-      // Delete associated bids and messages first
-      const bidsQuery = query(
-        collection(db, 'bids'), 
-        where('jobId', '==', selectedJob.id)
-      );
-      const bidsSnap = await getDocs(bidsQuery);
+      // First, fetch all associated resources
+      const apptsQuery = query(collection(db, 'appointments'), where('jobId', '==', selectedJob.id));
+      const bidsQuery = query(collection(db, 'bids'), where('jobId', '==', selectedJob.id));
       
+      const apptsSnap = await getDocs(apptsQuery).catch(err => {
+        handleFirestoreError(err, OperationType.LIST, 'appointments');
+        throw err;
+      });
+      const bidsSnap = await getDocs(bidsQuery).catch(err => {
+        handleFirestoreError(err, OperationType.LIST, 'bids');
+        throw err;
+      });
+      
+      console.log(`Found ${apptsSnap.size} appointments and ${bidsSnap.size} bids to delete.`);
+
       const batch = writeBatch(db);
+
+      // 1. Queue all appointments for deletion
+      apptsSnap.docs.forEach(doc => {
+        console.log("Queueing appointment deletion:", doc.id);
+        batch.delete(doc.ref);
+      });
+
+      // 2. Queue all bids and their messages for deletion
       for (const bidDoc of bidsSnap.docs) {
+        console.log("Found bid:", bidDoc.id, "Queueing messages and bid deletion.");
         const msgsQuery = query(collection(db, 'messages'), where('bidId', '==', bidDoc.id));
-        const msgsSnap = await getDocs(msgsQuery);
-        msgsSnap.docs.forEach(m => batch.delete(m.ref));
+        const msgsSnap = await getDocs(msgsQuery).catch(err => {
+          handleFirestoreError(err, OperationType.LIST, `messages/bidId=${bidDoc.id}`);
+          throw err;
+        });
+        msgsSnap.docs.forEach(msgDoc => {
+          console.log("Queueing message deletion:", msgDoc.id);
+          batch.delete(msgDoc.ref);
+        });
         batch.delete(bidDoc.ref);
       }
-      
-      batch.delete(doc(db, 'jobs', selectedJob.id));
-      await batch.commit();
+
+      // 3. Queue the job itself
+      console.log("Queueing job deletion:", selectedJob.id);
+      const jobRef = doc(db, 'jobs', selectedJob.id);
+      batch.delete(jobRef);
+
+      // Commit the atomic operation
+      await batch.commit().catch(err => {
+        handleFirestoreError(err, OperationType.DELETE, `batch-delete-job/${selectedJob.id}`);
+        throw err;
+      });
+      console.log("Batch commit successful.");
 
       setView('home');
       setSelectedJob(null);
       setShowDeleteConfirm(false);
     } catch (err) {
-      console.error("Error deleting job:", err);
-      setError("No se pudo eliminar la publicación. Por favor, intenta de nuevo.");
+      console.error("Error in deleteJob workflow details:", err);
+      if (err instanceof Error && err.message.includes('permission')) {
+        setError("Error de permisos: No se pudo eliminar la publicación. Asegúrese de que no tenga turnos activos y que usted sea el propietario.");
+      } else {
+        setError("No se pudo eliminar la publicación. Por favor, intenta de nuevo.");
+      }
       handleFirestoreError(err, OperationType.DELETE, `jobs/${selectedJob.id}`);
     } finally {
       setIsDeleting(false);
@@ -3174,7 +3256,7 @@ export default function App() {
                   <ChevronLeft className="w-6 h-6" />
                 </Button>
                 <h2 className="text-2xl font-bold">Detalles</h2>
-                {(profile?.isAdmin || (profile?.role === 'client' && selectedJob.clientId === profile.uid)) && (
+                {(profile?.isAdmin || (profile?.role === 'client' && selectedJob.clientId === profile.uid && (selectedJob.status === 'Open' || selectedJob.status === 'Assigned'))) && (
                   <Button 
                     variant="danger" 
                     onClick={() => setShowDeleteConfirm(true)} 

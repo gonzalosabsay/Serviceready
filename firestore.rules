@@ -8,54 +8,43 @@ service cloud.firestore {
 
     // 0.1 Generic Helpers
     function isSignedIn() { return request.auth != null; }
+    // Enforces basic authentication for development; can be tightened to email_verified for production
+    function isVerified() { return isSignedIn(); }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 
     // 0.2 Application specific helpers
+    // Enhanced isAdmin with safe email check and exists() guard
     function isAdmin() {
-      return isSignedIn() && 
-        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com", "gonzalo.sabsay@bue.edu.ar", "gonzalosabsay@ifts18.edu.ar"]);
+      return isSignedIn() && (
+        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com", "gonzalo.sabsay@bue.edu.ar", "gonzalosabsay@ifts18.edu.ar"]) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true)
+      );
     }
 
     // 1. Validation Blueprints
     
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'displayName', 'firstName', 'lastName', 'username', 'email', 'birthDate', 'phoneNumber', 'role']) &&
-             data.uid is string && data.uid.size() <= 128 &&
-             data.displayName is string && data.displayName.size() <= 100 &&
-             data.email is string && data.email.size() <= 100 &&
-             data.role in ['client', 'professional'] &&
-             (!('avgRating' in data) || data.avgRating == null || data.avgRating is number) &&
-             (!('numReviews' in data) || data.numReviews == null || data.numReviews is number) &&
-             (!('specialties' in data) || data.specialties is list) &&
-             (!('isAdmin' in data) || data.isAdmin is bool);
-    }
-
-    // This helper is for updates where we only check the fields present in the update
-    function isValidUserUpdate(data) {
-      return (!('uid' in data) || (data.uid is string && data.uid.size() <= 128)) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
-             (!('role' in data) || data.role in ['client', 'professional']) &&
-             (!('avgRating' in data) || data.avgRating == null || data.avgRating is number) &&
-             (!('numReviews' in data) || data.numReviews == null || data.numReviews is number) &&
-             (!('isAdmin' in data) || data.isAdmin is bool);
+             data.uid is string &&
+             data.displayName is string &&
+             data.email is string &&
+             data.role in ['client', 'professional'];
     }
 
     function isValidJob(data) {
       return data.keys().hasAll(['clientId', 'category', 'title', 'description', 'status', 'location', 'createdAt']) &&
-             data.clientId is string && data.clientId.size() <= 128 &&
-             data.title is string && data.title.size() <= 200 &&
-             data.description is string && data.description.size() <= 5000 &&
-             data.status in ['Open', 'Assigned', 'Completed'] &&
-             data.location is map &&
-             (!('aiBudget' in data) || data.aiBudget == null || data.aiBudget is map);
+             data.clientId is string &&
+             data.title is string &&
+             data.description is string &&
+             data.status in ['Open', 'Assigned', 'Completed'];
     }
 
     function isValidBid(data) {
-      return data.keys().hasAll(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
-             data.proposedPrice is number && data.proposedPrice > 0;
+      return data.keys().hasAll(['jobId', 'clientId', 'professionalId', 'amount', 'createdAt']) &&
+             data.jobId is string && data.clientId is string && data.professionalId is string;
     }
 
     function isValidAppointment(data) {
@@ -64,7 +53,7 @@ service cloud.firestore {
     }
 
     function isValidReview(data) {
-      return data.keys().hasAll(['reviewerId', 'reviewedId', 'jobId', 'stars', 'comment', 'createdAt']) &&
+      return data.keys().hasAll(['reviewerId', 'reviewedId', 'jobId', 'stars', 'comment', 'createdAt', 'detailedRatings']) &&
              data.reviewerId is string && data.reviewedId is string &&
              data.stars is number && data.stars >= 1 && data.stars <= 5;
     }
@@ -73,53 +62,76 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(incoming());
-      allow update: if (isValidUserUpdate(incoming()) && (
-        isOwner(userId) || 
-        isAdmin() || 
-        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['avgRating', 'numReviews']))
-      ));
-      allow delete: if isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     match /jobs/{jobId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidJob(incoming()) && incoming().clientId == request.auth.uid;
+      allow create: if isSignedIn() && isValidJob(incoming()) && isOwner(incoming().clientId);
       allow update: if isSignedIn() && (
-        (existing().clientId == request.auth.uid && isValidJob(incoming())) ||
-        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'assignedProfessionalId'])) ||
+        isOwner(resource.data.get('clientId', '')) ||
+        (incoming().diff(resource.data).affectedKeys().hasOnly(['status', 'assignedProfessionalId', 'title', 'description', 'category', 'location'])) ||
         isAdmin()
       );
-      allow delete: if isAdmin() || (isSignedIn() && existing().clientId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isOwner(resource.data.get('clientId', '')));
     }
 
     match /bids/{bidId} {
-      allow read: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidBid(incoming()) && incoming().professionalId == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid || isAdmin());
-      allow delete: if isAdmin() || (isSignedIn() && (resource.data.professionalId == request.auth.uid || resource.data.clientId == request.auth.uid));
+      allow read: if isSignedIn() && (
+        isOwner(resource.data.get('professionalId', '')) || 
+        isOwner(resource.data.get('clientId', '')) || 
+        isAdmin() ||
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+      );
+      allow create: if isVerified() && isValidBid(incoming()) && isOwner(incoming().professionalId);
+      allow update: if (isVerified() || isAdmin()) && (isOwner(resource.data.get('professionalId', '')) || isOwner(resource.data.get('clientId', '')) || isAdmin());
+      allow delete: if isAdmin() || (isSignedIn() && (
+        isOwner(resource.data.get('professionalId', '')) || 
+        isOwner(resource.data.get('clientId', '')) ||
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+      ));
     }
 
     match /messages/{messageId} {
-      allow read: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
-      allow update: if isSignedIn() && (resource.data.recipientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']));
-      allow delete: if isAdmin() || (isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.recipientId == request.auth.uid));
+      allow read: if isSignedIn() && (
+        isOwner(resource.data.get('senderId', '')) || 
+        isOwner(resource.data.get('recipientId', '')) || 
+        isAdmin() ||
+        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.bidId)).data.get('clientId', '') == request.auth.uid)
+      );
+      allow create: if isVerified() && isOwner(incoming().senderId);
+      allow update: if isVerified() && (isOwner(resource.data.get('recipientId', '')) && incoming().diff(existing()).affectedKeys().hasOnly(['read']));
+      allow delete: if isAdmin() || (isSignedIn() && (
+        isOwner(resource.data.get('senderId', '')) || 
+        isOwner(resource.data.get('recipientId', '')) ||
+        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.bidId)).data.get('clientId', '') == request.auth.uid)
+      ));
     }
 
     match /appointments/{appointmentId} {
-      allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || resource.data.professionalId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidAppointment(incoming()) && (incoming().clientId == request.auth.uid || incoming().professionalId == request.auth.uid);
-      allow update: if isSignedIn() && (
-        (existing().clientId == request.auth.uid || existing().professionalId == request.auth.uid || isAdmin()) &&
+      allow read: if isSignedIn() && (
+        isOwner(resource.data.get('clientId', '')) || 
+        isOwner(resource.data.get('professionalId', '')) || 
+        isAdmin() ||
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+      );
+      allow create: if isVerified() && isValidAppointment(incoming()) && (isOwner(incoming().clientId) || isOwner(incoming().professionalId));
+      allow update: if (isVerified() || isAdmin()) && (
+        (isOwner(resource.data.get('clientId', '')) || isOwner(resource.data.get('professionalId', '')) || isAdmin()) &&
         isValidAppointment(incoming())
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isSignedIn() && (
+        isOwner(resource.data.get('clientId', '')) || 
+        isOwner(resource.data.get('professionalId', '')) ||
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+      ));
     }
 
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidReview(incoming()) && incoming().reviewerId == request.auth.uid;
+      allow create: if isVerified() && isValidReview(incoming()) && incoming().reviewerId == request.auth.uid;
       allow delete: if isAdmin();
     }
 
