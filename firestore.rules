@@ -1,11 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // 0.1 Generic Helpers
     function isSignedIn() { return request.auth != null; }
     // Enforces basic authentication for development; can be tightened to email_verified for production
@@ -16,11 +11,10 @@ service cloud.firestore {
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 
     // 0.2 Application specific helpers
-    // Enhanced isAdmin with safe email check and exists() guard
+    // Enhanced isAdmin with safe email check
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com", "gonzalo.sabsay@bue.edu.ar", "gonzalosabsay@ifts18.edu.ar"]) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true)
+        request.auth.token.get('email', '') in ["gonzalo.sabsay@gmail.com", "gonzalo.sabsay@hotmail.com", "gonzalo.sabsay@bue.edu.ar", "gonzalosabsay@ifts18.edu.ar"]
       );
     }
 
@@ -62,14 +56,14 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId) || isAdmin();
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isOwner(userId) || isAdmin();
+      allow create: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
     }
 
     match /jobs/{jobId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidJob(incoming()) && isOwner(incoming().clientId);
+      allow create: if isSignedIn() && isValidJob(incoming()) && (isOwner(incoming().clientId) || isAdmin());
       allow update: if isSignedIn() && (
         isOwner(resource.data.get('clientId', '')) ||
         (incoming().diff(resource.data).affectedKeys().hasOnly(['status', 'assignedProfessionalId', 'title', 'description', 'category', 'location'])) ||
@@ -83,14 +77,14 @@ service cloud.firestore {
         isOwner(resource.data.get('professionalId', '')) || 
         isOwner(resource.data.get('clientId', '')) || 
         isAdmin() ||
-        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.get('jobId', ''))).data.get('clientId', '') == request.auth.uid)
       );
-      allow create: if isVerified() && isValidBid(incoming()) && isOwner(incoming().professionalId);
+      allow create: if isVerified() && isValidBid(incoming()) && (isOwner(incoming().professionalId) || isAdmin());
       allow update: if (isVerified() || isAdmin()) && (isOwner(resource.data.get('professionalId', '')) || isOwner(resource.data.get('clientId', '')) || isAdmin());
       allow delete: if isAdmin() || (isSignedIn() && (
         isOwner(resource.data.get('professionalId', '')) || 
         isOwner(resource.data.get('clientId', '')) ||
-        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.get('jobId', ''))).data.get('clientId', '') == request.auth.uid)
       ));
     }
 
@@ -99,14 +93,14 @@ service cloud.firestore {
         isOwner(resource.data.get('senderId', '')) || 
         isOwner(resource.data.get('recipientId', '')) || 
         isAdmin() ||
-        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.bidId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.get('bidId', ''))).data.get('clientId', '') == request.auth.uid)
       );
-      allow create: if isVerified() && isOwner(incoming().senderId);
+      allow create: if isVerified() && (isOwner(incoming().senderId) || isAdmin());
       allow update: if isVerified() && (isOwner(resource.data.get('recipientId', '')) && incoming().diff(existing()).affectedKeys().hasOnly(['read']));
       allow delete: if isAdmin() || (isSignedIn() && (
         isOwner(resource.data.get('senderId', '')) || 
         isOwner(resource.data.get('recipientId', '')) ||
-        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.bidId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('bidId', '') != '' && get(/databases/$(database)/documents/bids/$(resource.data.get('bidId', ''))).data.get('clientId', '') == request.auth.uid)
       ));
     }
 
@@ -115,9 +109,9 @@ service cloud.firestore {
         isOwner(resource.data.get('clientId', '')) || 
         isOwner(resource.data.get('professionalId', '')) || 
         isAdmin() ||
-        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.get('jobId', ''))).data.get('clientId', '') == request.auth.uid)
       );
-      allow create: if isVerified() && isValidAppointment(incoming()) && (isOwner(incoming().clientId) || isOwner(incoming().professionalId));
+      allow create: if isVerified() && isValidAppointment(incoming()) && (isOwner(incoming().clientId) || isOwner(incoming().professionalId) || isAdmin());
       allow update: if (isVerified() || isAdmin()) && (
         (isOwner(resource.data.get('clientId', '')) || isOwner(resource.data.get('professionalId', '')) || isAdmin()) &&
         isValidAppointment(incoming())
@@ -125,19 +119,24 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isSignedIn() && (
         isOwner(resource.data.get('clientId', '')) || 
         isOwner(resource.data.get('professionalId', '')) ||
-        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data.get('clientId', '') == request.auth.uid)
+        (resource.data.get('jobId', '') != '' && get(/databases/$(database)/documents/jobs/$(resource.data.get('jobId', ''))).data.get('clientId', '') == request.auth.uid)
       ));
     }
 
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
-      allow create: if isVerified() && isValidReview(incoming()) && incoming().reviewerId == request.auth.uid;
+      allow create: if isVerified() && isValidReview(incoming()) && (incoming().reviewerId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
 
     // Path for connection test
     match /test/connection {
       allow read: if true;
+    }
+
+    // 0. Global Safety Net (Moved to bottom)
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

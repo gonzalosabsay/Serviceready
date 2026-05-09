@@ -364,11 +364,17 @@ const ReviewList = ({ userId }: { userId: string }) => {
       
       const enrichedReviews = await Promise.all(
         reviewData.map(async (review) => {
-          const reviewerSnap = await getDoc(doc(db, 'users', review.reviewerId));
-          return {
-            ...review,
-            reviewer: reviewerSnap.exists() ? reviewerSnap.data() as UserProfile : undefined
-          };
+          if (!review.reviewerId) return { ...review };
+          try {
+            const reviewerSnap = await getDoc(doc(db, 'users', review.reviewerId));
+            return {
+              ...review,
+              reviewer: reviewerSnap.exists() ? reviewerSnap.data() as UserProfile : undefined
+            };
+          } catch (e) {
+            handleFirestoreError(e, OperationType.GET, `users/${review.reviewerId}`);
+            return { ...review };
+          }
         })
       );
 
@@ -994,6 +1000,10 @@ export default function App() {
         }
 
         const otherUserId = profile.role === 'client' ? appt.professionalId : appt.clientId;
+        if (!otherUserId) {
+          console.warn('No otherUserId for appointment:', appt.id);
+          return { ...appt, job };
+        }
         let otherUser = userCache.get(otherUserId);
         if (!otherUser) {
           try {
@@ -1003,7 +1013,7 @@ export default function App() {
               userCache.set(otherUserId, otherUser);
             }
           } catch (e) {
-            console.error('Error fetching user for appointment:', e);
+            handleFirestoreError(e, OperationType.GET, `users/${otherUserId}`);
           }
         }
 
@@ -1316,13 +1326,15 @@ export default function App() {
         enrichedBid.otherUser = enrichedBid.professional;
       } else if (profile) {
         const otherUserId = enrichedBid.professionalId === profile.uid ? enrichedBid.clientId : enrichedBid.professionalId;
-        try {
-          const userSnap = await getDoc(doc(db, 'users', otherUserId));
-          if (userSnap.exists()) {
-            enrichedBid.otherUser = { uid: userSnap.id, ...userSnap.data() } as UserProfile;
+        if (otherUserId) {
+          try {
+            const userSnap = await getDoc(doc(db, 'users', otherUserId));
+            if (userSnap.exists()) {
+              enrichedBid.otherUser = { uid: userSnap.id, ...userSnap.data() } as UserProfile;
+            }
+          } catch (err) {
+            handleFirestoreError(err, OperationType.GET, `users/${otherUserId}`);
           }
-        } catch (err) {
-          console.error('Error fetching other user for chat:', err);
         }
       }
     }
@@ -2308,7 +2320,10 @@ export default function App() {
         isProfessionalProfileComplete: false
       };
 
-      await setDoc(doc(db, 'users', testUserId), testUser);
+      await setDoc(doc(db, 'users', testUserId), testUser).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${testUserId}`);
+        throw err;
+      });
 
       const batch = writeBatch(db);
       
@@ -2334,12 +2349,15 @@ export default function App() {
         });
       });
 
-      await batch.commit();
+      await batch.commit().catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, 'batch-generate-test-data');
+        throw err;
+      });
       setError("¡Datos de prueba generados con éxito!");
       setView('home');
     } catch (err) {
       console.error("Error generating test data:", err);
-      setError("Error al generar datos de prueba.");
+      setError("Error al generar datos de prueba. Revisa la consola para más detalles.");
     } finally {
       setIsDeleting(false);
     }
@@ -2352,7 +2370,10 @@ export default function App() {
       // 1. Clear all major collections
       const collections = ['users', 'jobs', 'bids', 'messages', 'reviews', 'appointments'];
       for (const colName of collections) {
-        const snapshot = await getDocs(collection(db, colName));
+        const snapshot = await getDocs(collection(db, colName)).catch(err => {
+          handleFirestoreError(err, OperationType.LIST, colName);
+          throw err;
+        });
         let batch = writeBatch(db);
         let count = 0;
         
@@ -2376,14 +2397,20 @@ export default function App() {
           }
           
           if (count >= 450) { // Keep it safe below 500
-            await batch.commit();
+            await batch.commit().catch(err => {
+              handleFirestoreError(err, OperationType.DELETE, `batch-reset-${colName}`);
+              throw err;
+            });
             batch = writeBatch(db);
             count = 0;
           }
         }
         
         if (count > 0) {
-          await batch.commit();
+          await batch.commit().catch(err => {
+            handleFirestoreError(err, OperationType.DELETE, `batch-reset-final-${colName}`);
+            throw err;
+          });
         }
       }
       
