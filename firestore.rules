@@ -37,7 +37,7 @@ service cloud.firestore {
     }
 
     function isValidBid(data) {
-      return data.keys().hasAll(['jobId', 'clientId', 'professionalId', 'amount', 'createdAt']) &&
+      return data.keys().hasAll(['jobId', 'clientId', 'professionalId', 'proposedPrice', 'createdAt']) &&
              data.jobId is string && data.clientId is string && data.professionalId is string;
     }
 
@@ -57,7 +57,11 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && (isOwner(userId) || isAdmin());
-      allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow update: if isSignedIn() && (
+        isOwner(userId) || 
+        isAdmin() || 
+        incoming().diff(existing()).affectedKeys().hasOnly(['avgRating', 'numReviews'])
+      );
       allow delete: if isAdmin();
     }
 

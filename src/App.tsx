@@ -1942,11 +1942,17 @@ export default function App() {
         detailedRatings,
         comment,
         createdAt: new Date().toISOString()
+      }).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, 'reviews');
+        throw err;
       });
 
       // 2. Update user profile (avgRating, numReviews)
       const reviewedRef = doc(db, 'users', reviewedId);
-      const reviewedSnap = await getDoc(reviewedRef);
+      const reviewedSnap = await getDoc(reviewedRef).catch(err => {
+        handleFirestoreError(err, OperationType.GET, `users/${reviewedId}`);
+        throw err;
+      });
       if (reviewedSnap.exists()) {
         const reviewedData = reviewedSnap.data() as UserProfile;
         const oldAvg = reviewedData.avgRating || 0;
@@ -1957,15 +1963,24 @@ export default function App() {
         await updateDoc(reviewedRef, {
           avgRating: newAvg,
           numReviews: newNum
+        }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${reviewedId}`);
+          throw err;
         });
       }
 
       // 3. Update appointment (clientRated or professionalRated)
       const apptRef = doc(db, 'appointments', ratingAppointment.id);
       if (profile.role === 'client') {
-        await updateDoc(apptRef, { clientRated: true });
+        await updateDoc(apptRef, { clientRated: true }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, `appointments/${ratingAppointment.id}`);
+          throw err;
+        });
       } else {
-        await updateDoc(apptRef, { professionalRated: true });
+        await updateDoc(apptRef, { professionalRated: true }).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, `appointments/${ratingAppointment.id}`);
+          throw err;
+        });
       }
 
       // 4. Send system message
